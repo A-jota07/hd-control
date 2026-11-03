@@ -20,27 +20,50 @@ window, dialog, .main-window {
     background-color: #141418;
     border: 1px solid #27272a;
     border-radius: 8px;
-    padding: 16px;
+    padding: 10px 14px;
 }
 
 .card-highlight {
     background-color: #18181c;
     border: 1px solid #e4e4e7;
     border-radius: 8px;
-    padding: 16px;
+    padding: 10px 14px;
 }
 
 .stat-value {
-    font-size: 26px;
+    font-size: 20px;
     font-weight: 800;
     color: #ffffff;
 }
 
 .stat-label {
-    font-size: 11px;
+    font-size: 10px;
     font-weight: 600;
     color: #a1a1aa;
-    letter-spacing: 0.6px;
+    letter-spacing: 0.5px;
+}
+
+notebook {
+    background-color: transparent;
+    border: none;
+}
+
+notebook tab {
+    padding: 6px 14px;
+    background-color: #18181c;
+    color: #a1a1aa;
+    font-weight: 600;
+    border: 1px solid #27272a;
+    border-bottom: none;
+    border-top-left-radius: 6px;
+    border-top-right-radius: 6px;
+}
+
+notebook tab:checked {
+    background-color: #ffffff;
+    color: #09090b;
+    font-weight: 700;
+    border-color: #ffffff;
 }
 
 .section-title {
@@ -210,27 +233,50 @@ window, dialog, .main-window {
     background-color: #ffffff;
     border: 1px solid #d4d4d8;
     border-radius: 8px;
-    padding: 16px;
+    padding: 10px 14px;
 }
 
 .card-highlight {
     background-color: #ffffff;
     border: 2px solid #09090b;
     border-radius: 8px;
-    padding: 16px;
+    padding: 10px 14px;
 }
 
 .stat-value {
-    font-size: 26px;
+    font-size: 20px;
     font-weight: 800;
     color: #09090b;
 }
 
 .stat-label {
-    font-size: 11px;
+    font-size: 10px;
     font-weight: 600;
     color: #52525b;
-    letter-spacing: 0.6px;
+    letter-spacing: 0.5px;
+}
+
+notebook {
+    background-color: transparent;
+    border: none;
+}
+
+notebook tab {
+    padding: 6px 14px;
+    background-color: #e4e4e7;
+    color: #52525b;
+    font-weight: 600;
+    border: 1px solid #d4d4d8;
+    border-bottom: none;
+    border-top-left-radius: 6px;
+    border-top-right-radius: 6px;
+}
+
+notebook tab:checked {
+    background-color: #09090b;
+    color: #ffffff;
+    font-weight: 700;
+    border-color: #09090b;
 }
 
 .section-title {

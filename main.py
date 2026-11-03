@@ -16,7 +16,9 @@ from modules.theme import DARK_CSS, LIGHT_CSS
 class HDControlApp(Gtk.Window):
     def __init__(self):
         super().__init__(title="HD Control Studio — Diagnóstico, Inventário e Provisionamento")
-        self.set_default_size(1240, 780)
+        self.set_default_size(980, 620)
+        self.set_size_request(760, 480)
+        self.set_resizable(True)
         self.set_position(Gtk.WindowPosition.CENTER)
 
         self.db = DatabaseManager()
@@ -55,24 +57,27 @@ class HDControlApp(Gtk.Window):
         self.add(root_vbox)
 
         # --- TOPBAR ---
-        topbar = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=16)
+        topbar = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
         topbar.get_style_context().add_class("topbar")
 
         title_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
+        title_box.set_hexpand(True)
         lbl_title = Gtk.Label(label="HD CONTROL // SISTEMA DE CONTROLE E PROVISIONAMENTO DE DISCOS")
         lbl_title.set_xalign(0)
+        lbl_title.set_line_wrap(True)
         lbl_title.get_style_context().add_class("section-title")
 
         lbl_sub = Gtk.Label(
-            label="Diagnóstico SMART (GSmartControl/UDisks2) • Controle de HDs Funcionando/Defeito • Formatação & Instalação de SO/Arquivos via USB"
+            label="Diagnóstico SMART (UDisks2/smartctl) • Controle de HDs • Formatação & Instalação de SO/Arquivos USB"
         )
         lbl_sub.set_xalign(0)
+        lbl_sub.set_line_wrap(True)
         lbl_sub.get_style_context().add_class("subtitle")
         title_box.pack_start(lbl_title, False, False, 0)
         title_box.pack_start(lbl_sub, False, False, 0)
         topbar.pack_start(title_box, True, True, 0)
 
-        btn_refresh = Gtk.Button(label="↻  Escanear Porta USB / Discos")
+        btn_refresh = Gtk.Button(label="↻  Escanear USB")
         btn_refresh.connect("clicked", lambda _: self.refresh_all_data(notify=True))
         topbar.pack_end(btn_refresh, False, False, 0)
 
@@ -83,30 +88,30 @@ class HDControlApp(Gtk.Window):
         root_vbox.pack_start(topbar, False, False, 0)
 
         # --- KPI CARDS BAR ---
-        kpi_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
-        kpi_box.set_margin_top(14)
-        kpi_box.set_margin_bottom(6)
-        kpi_box.set_margin_start(18)
-        kpi_box.set_margin_end(18)
+        kpi_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        kpi_box.set_margin_top(8)
+        kpi_box.set_margin_bottom(4)
+        kpi_box.set_margin_start(12)
+        kpi_box.set_margin_end(12)
 
-        self.kpi_total_lbl = self._create_kpi_card(kpi_box, "TOTAL DE HDs REGISTRADOS", "0")
-        self.kpi_working_lbl = self._create_kpi_card(kpi_box, "HDs FUNCIONANDO (PRONTOS)", "0", highlight=True)
-        self.kpi_defective_lbl = self._create_kpi_card(kpi_box, "HDs COM DEFEITO", "0")
-        self.kpi_testing_lbl = self._create_kpi_card(kpi_box, "HDs EM TESTE", "0")
-        self.kpi_needed_lbl = self._create_kpi_card(kpi_box, "PCs SEM HD/SSD (DEMANDA)", "0")
+        self.kpi_total_lbl = self._create_kpi_card(kpi_box, "HDs REGISTRADOS", "0")
+        self.kpi_working_lbl = self._create_kpi_card(kpi_box, "FUNCIONANDO", "0", highlight=True)
+        self.kpi_defective_lbl = self._create_kpi_card(kpi_box, "COM DEFEITO", "0")
+        self.kpi_testing_lbl = self._create_kpi_card(kpi_box, "EM TESTE", "0")
+        self.kpi_needed_lbl = self._create_kpi_card(kpi_box, "PCs SEM HD/SSD", "0")
 
         root_vbox.pack_start(kpi_box, False, False, 0)
 
         # --- MAIN BODY (SIDEBAR + STACK) ---
         body_hbox = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=0)
-        body_hbox.set_margin_top(8)
+        body_hbox.set_margin_top(4)
         root_vbox.pack_start(body_hbox, True, True, 0)
 
-        sidebar = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
-        sidebar.set_size_request(255, -1)
+        sidebar = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
+        sidebar.set_size_request(210, -1)
         sidebar.get_style_context().add_class("sidebar")
         sidebar.set_margin_end(0)
-        sidebar.set_border_width(12)
+        sidebar.set_border_width(8)
 
         self.stack = Gtk.Stack()
         self.stack.set_transition_type(Gtk.StackTransitionType.CROSSFADE)
@@ -122,7 +127,12 @@ class HDControlApp(Gtk.Window):
         ]
 
         for page_id, page_title, widget in pages:
-            self.stack.add_named(widget, page_id)
+            # Envolve cada página em um ScrolledWindow para liberar redimensionamento total da janela
+            scrolled = Gtk.ScrolledWindow()
+            scrolled.set_policy(Gtk.PolicyType.AUTOMATIC, Gtk.PolicyType.AUTOMATIC)
+            scrolled.add(widget)
+            self.stack.add_named(scrolled, page_id)
+
             btn = Gtk.Button(label=page_title)
             btn.set_relief(Gtk.ReliefStyle.NONE)
             for child in btn.get_children():
@@ -213,23 +223,23 @@ class HDControlApp(Gtk.Window):
     # =========================================================================
     def _build_scanner_page(self):
         paned = Gtk.Paned(orientation=Gtk.Orientation.HORIZONTAL)
-        paned.set_margin_top(12)
-        paned.set_margin_bottom(12)
-        paned.set_margin_start(16)
-        paned.set_margin_end(16)
-        paned.set_position(540)
+        paned.set_margin_top(8)
+        paned.set_margin_bottom(8)
+        paned.set_margin_start(10)
+        paned.set_margin_end(10)
+        paned.set_position(360)
 
         # Lado Esquerdo: Lista de Discos Físicos Conectados
-        left_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
-        left_box.set_margin_end(10)
+        left_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+        left_box.set_margin_end(6)
 
-        hdr_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
-        lbl = Gtk.Label(label="DISCOS CONECTADOS (PORTA USB / SATA / NVMe)")
+        hdr_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+        lbl = Gtk.Label(label="DISCOS CONECTADOS (USB / SATA / NVMe)")
         lbl.set_xalign(0)
         lbl.get_style_context().add_class("section-title")
         hdr_box.pack_start(lbl, True, True, 0)
 
-        self.chk_show_sys = Gtk.CheckButton(label="Mostrar disco do sistema")
+        self.chk_show_sys = Gtk.CheckButton(label="Exibir sistema")
         self.chk_show_sys.set_active(True)
         self.chk_show_sys.connect("toggled", lambda _: self.refresh_connected_disks())
         hdr_box.pack_end(self.chk_show_sys, False, False, 0)
@@ -243,19 +253,18 @@ class HDControlApp(Gtk.Window):
         self.live_tree.get_selection().connect("changed", self._on_live_disk_selected)
 
         cols = [
-            ("Dispositivo", 0, 95),
-            ("Porta / Tipo", 1, 95),
-            ("Modelo", 2, 165),
-            ("Tam.", 3, 75),
-            ("Saúde SMART", 5, 110),
-            ("No Controle", 6, 110),
+            ("Dev", 0, 65),
+            ("Porta", 1, 65),
+            ("Modelo", 2, 115),
+            ("Tam.", 3, 60),
+            ("SMART", 5, 80),
+            ("Status", 6, 80),
         ]
         for title, idx, width in cols:
             renderer = Gtk.CellRendererText()
             renderer.set_property("ellipsize", Pango.EllipsizeMode.END)
             col = Gtk.TreeViewColumn(title, renderer, text=idx)
             col.set_resizable(True)
-            col.set_min_width(width)
             self.live_tree.append_column(col)
 
         scroll_live = Gtk.ScrolledWindow()
@@ -265,68 +274,72 @@ class HDControlApp(Gtk.Window):
         left_box.pack_start(scroll_live, True, True, 0)
 
         hint = Gtk.Label(
-            label="Dica: Conecte qualquer HD no leitor USB externo. Ele aparecerá automaticamente no topo da lista."
+            label="HDs no leitor USB aparecem no topo. Selecione um para ver detalhes."
         )
         hint.set_xalign(0)
+        hint.set_line_wrap(True)
         hint.get_style_context().add_class("subtitle")
         left_box.pack_start(hint, False, False, 0)
 
         # Lado Direito: Painel de Inspeção, Aprovação Rápida e Diagnóstico SMART
-        right_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
-        right_box.set_margin_start(10)
+        right_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+        right_box.set_margin_start(6)
 
-        card_detail = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
+        card_detail = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
         card_detail.get_style_context().add_class("card")
 
         self.lbl_sel_disk_title = Gtk.Label(label="Selecione um disco à esquerda")
         self.lbl_sel_disk_title.set_xalign(0)
+        self.lbl_sel_disk_title.set_line_wrap(True)
         self.lbl_sel_disk_title.get_style_context().add_class("section-title")
         card_detail.pack_start(self.lbl_sel_disk_title, False, False, 0)
 
         self.lbl_sel_disk_meta = Gtk.Label(
-            label="Ao selecionar um HD conectado, veja aqui o número de série, horas de uso, bad sectors, partições e registre se está funcionando ou com defeito."
+            label="Informações técnicas, horas de uso e setores defeituosos serão exibidos aqui."
         )
         self.lbl_sel_disk_meta.set_xalign(0)
         self.lbl_sel_disk_meta.set_line_wrap(True)
         self.lbl_sel_disk_meta.get_style_context().add_class("mono")
         card_detail.pack_start(self.lbl_sel_disk_meta, False, False, 0)
 
-        # Botões de Diagnóstico Técnico
-        diag_btn_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
-        btn_smart_deep = Gtk.Button(label="🔍 Diagnóstico SMART Completo (smartctl)")
+        # Botões de Diagnóstico Técnico (Grid responsivo)
+        diag_grid = Gtk.Grid(column_spacing=6, row_spacing=6)
+        btn_smart_deep = Gtk.Button(label="🔍 Diagnóstico SMART")
+        btn_smart_deep.set_hexpand(True)
         btn_smart_deep.connect("clicked", self._on_run_deep_smart)
-        diag_btn_box.pack_start(btn_smart_deep, True, True, 0)
 
-        btn_surf_test = Gtk.Button(label="⚡ Teste Rápido de Leitura (I/O)")
+        btn_surf_test = Gtk.Button(label="⚡ Teste Leitura I/O")
+        btn_surf_test.set_hexpand(True)
         btn_surf_test.connect("clicked", self._on_run_surface_test)
-        diag_btn_box.pack_start(btn_surf_test, True, True, 0)
 
-        btn_go_format = Gtk.Button(label="⚙ Ir para Formatar / SO")
+        btn_go_format = Gtk.Button(label="⚙ Formatar / SO →")
         btn_go_format.connect("clicked", self._on_jump_to_format)
-        diag_btn_box.pack_start(btn_go_format, False, False, 0)
 
-        card_detail.pack_start(diag_btn_box, False, False, 0)
+        diag_grid.attach(btn_smart_deep, 0, 0, 1, 1)
+        diag_grid.attach(btn_surf_test, 1, 0, 1, 1)
+        diag_grid.attach(btn_go_format, 2, 0, 1, 1)
+        card_detail.pack_start(diag_grid, False, False, 0)
 
         # Formulário de Classificação Rápida no Controle de HDs
         sep_f = Gtk.Separator(orientation=Gtk.Orientation.HORIZONTAL)
-        card_detail.pack_start(sep_f, False, False, 4)
+        card_detail.pack_start(sep_f, False, False, 2)
 
         lbl_reg = Gtk.Label(label="CLASSIFICAR E SALVAR ESTE HD NO CONTROLE")
         lbl_reg.set_xalign(0)
         lbl_reg.get_style_context().add_class("stat-label")
         card_detail.pack_start(lbl_reg, False, False, 0)
 
-        grid_reg = Gtk.Grid(column_spacing=10, row_spacing=8)
-        lbl_m = Gtk.Label(label="Máquina / Destino:")
+        grid_reg = Gtk.Grid(column_spacing=8, row_spacing=6)
+        lbl_m = Gtk.Label(label="Máquina/Destino:")
         lbl_m.set_xalign(0)
         self.entry_quick_machine = Gtk.Entry()
         self.entry_quick_machine.set_placeholder_text("Ex: Dell #04, Bematech #01, Estoque LEIA...")
         self.entry_quick_machine.set_hexpand(True)
 
-        lbl_n = Gtk.Label(label="Observações do Teste:")
+        lbl_n = Gtk.Label(label="Observações:")
         lbl_n.set_xalign(0)
         self.entry_quick_notes = Gtk.Entry()
-        self.entry_quick_notes.set_placeholder_text("Ex: Sem bad blocks, barulho normal, pronto para uso...")
+        self.entry_quick_notes.set_placeholder_text("Ex: Sem bad blocks, ruído normal...")
         self.entry_quick_notes.set_hexpand(True)
 
         grid_reg.attach(lbl_m, 0, 0, 1, 1)
@@ -335,26 +348,26 @@ class HDControlApp(Gtk.Window):
         grid_reg.attach(self.entry_quick_notes, 1, 1, 1, 1)
         card_detail.pack_start(grid_reg, False, False, 0)
 
-        verdict_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
-        btn_mark_ok = Gtk.Button(label="✓ CONFIRMAR: FUNCIONANDO")
+        verdict_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+        btn_mark_ok = Gtk.Button(label="✓ FUNCIONANDO")
         btn_mark_ok.get_style_context().add_class("primary-btn")
         btn_mark_ok.connect("clicked", self._on_quick_classify, "Funcionando")
         verdict_box.pack_start(btn_mark_ok, True, True, 0)
 
-        btn_mark_bad = Gtk.Button(label="✕ MARCAR: COM DEFEITO")
+        btn_mark_bad = Gtk.Button(label="✕ COM DEFEITO")
         btn_mark_bad.get_style_context().add_class("danger-btn")
         btn_mark_bad.connect("clicked", self._on_quick_classify, "Com Defeito")
         verdict_box.pack_start(btn_mark_bad, True, True, 0)
 
         btn_mark_test = Gtk.Button(label="⏳ EM TESTE")
         btn_mark_test.connect("clicked", self._on_quick_classify, "Em Teste")
-        verdict_box.pack_start(btn_mark_test, False, False, 0)
+        verdict_box.pack_start(btn_mark_test, True, True, 0)
 
         card_detail.pack_start(verdict_box, False, False, 0)
         right_box.pack_start(card_detail, False, False, 0)
 
         # Saída do Relatório SMART / Partições
-        lbl_rep = Gtk.Label(label="SAÍDA TÉCNICA SMART / PARTIÇÕES DO DISCO")
+        lbl_rep = Gtk.Label(label="SAÍDA TÉCNICA SMART / PARTIÇÕES")
         lbl_rep.set_xalign(0)
         lbl_rep.get_style_context().add_class("stat-label")
         right_box.pack_start(lbl_rep, False, False, 0)
@@ -366,35 +379,41 @@ class HDControlApp(Gtk.Window):
 
         scroll_rep = Gtk.ScrolledWindow()
         scroll_rep.set_policy(Gtk.PolicyType.AUTOMATIC, Gtk.PolicyType.AUTOMATIC)
+        scroll_rep.set_size_request(-1, 150)
         scroll_rep.set_vexpand(True)
         scroll_rep.add(self.smart_textview)
         right_box.pack_start(scroll_rep, True, True, 0)
 
-        paned.pack1(left_box, resize=True, shrink=False)
-        paned.pack2(right_box, resize=True, shrink=False)
+        # Envolve o lado direito em um ScrolledWindow para não estourar telas baixas
+        right_scroll = Gtk.ScrolledWindow()
+        right_scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+        right_scroll.add(right_box)
+
+        paned.pack1(left_box, resize=True, shrink=True)
+        paned.pack2(right_scroll, resize=True, shrink=True)
         return paned
 
     # =========================================================================
     # ABA 2: CONTROLE DE HDs (BANCO DE DADOS COMPLETO + CADASTRO MANUAL)
     # =========================================================================
     def _build_inventory_page(self):
-        vbox = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
-        vbox.set_margin_top(12)
-        vbox.set_margin_bottom(12)
-        vbox.set_margin_start(16)
-        vbox.set_margin_end(16)
+        vbox = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+        vbox.set_margin_top(8)
+        vbox.set_margin_bottom(8)
+        vbox.set_margin_start(10)
+        vbox.set_margin_end(10)
 
         # Barra de Filtro e Busca
-        filter_bar = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
-        lbl = Gtk.Label(label="PLANILHA DE CONTROLE DE HDs & SSDs")
+        filter_bar = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        lbl = Gtk.Label(label="CONTROLE DE HDs & SSDs")
         lbl.get_style_context().add_class("section-title")
         filter_bar.pack_start(lbl, False, False, 0)
 
         self.search_entry = Gtk.Entry()
-        self.search_entry.set_placeholder_text("Buscar por Serial, Modelo, Máquina ou Observação...")
-        self.search_entry.set_width_chars(34)
+        self.search_entry.set_placeholder_text("Buscar serial, modelo...")
+        self.search_entry.set_width_chars(18)
         self.search_entry.connect("changed", lambda _: self.refresh_drives_table())
-        filter_bar.pack_start(self.search_entry, False, False, 8)
+        filter_bar.pack_start(self.search_entry, False, False, 4)
 
         self.filter_combo = Gtk.ComboBoxText()
         for st in ["Todos", "Funcionando", "Com Defeito", "Em Teste", "Formatado", "SO Instalado"]:
@@ -403,7 +422,7 @@ class HDControlApp(Gtk.Window):
         self.filter_combo.connect("changed", lambda _: self.refresh_drives_table())
         filter_bar.pack_start(self.filter_combo, False, False, 0)
 
-        btn_add_manual = Gtk.Button(label="+ Cadastrar HD Manualmente")
+        btn_add_manual = Gtk.Button(label="+ Cadastrar HD")
         btn_add_manual.get_style_context().add_class("primary-btn")
         btn_add_manual.connect("clicked", self._on_add_manual_drive_dialog)
         filter_bar.pack_end(btn_add_manual, False, False, 0)
@@ -411,31 +430,29 @@ class HDControlApp(Gtk.Window):
         vbox.pack_start(filter_bar, False, False, 0)
 
         # Tabela de HDs registrados
-        # 0:ID, 1:Status, 2:Modelo, 3:Serial, 4:Capacidade, 5:Tipo, 6:SMART, 7:BadSectors, 8:Horas, 9:Máquina, 10:Notas, 11:Data
         self.drives_store = Gtk.ListStore(int, str, str, str, str, str, str, int, int, str, str, str)
         self.drives_tree = Gtk.TreeView(model=self.drives_store)
         self.drives_tree.get_selection().connect("changed", self._on_db_drive_selected)
 
         cols = [
-            ("ID", 0, 45),
-            ("Status", 1, 115),
-            ("Modelo do HD/SSD", 2, 190),
-            ("Nº de Série (Serial)", 3, 155),
-            ("Tam.", 4, 80),
-            ("Tipo", 5, 70),
-            ("SMART", 6, 95),
-            ("Bad Sec.", 7, 70),
-            ("Horas Uso", 8, 80),
-            ("Máquina / Destino", 9, 135),
-            ("Observações", 10, 210),
-            ("Último Teste", 11, 135),
+            ("ID", 0, 40),
+            ("Status", 1, 95),
+            ("Modelo HD/SSD", 2, 140),
+            ("Serial", 3, 110),
+            ("Tam.", 4, 60),
+            ("Tipo", 5, 55),
+            ("SMART", 6, 80),
+            ("Bad Sec.", 7, 65),
+            ("Uso (h)", 8, 65),
+            ("Destino", 9, 95),
+            ("Observações", 10, 140),
+            ("Último Teste", 11, 110),
         ]
         for title, idx, width in cols:
             renderer = Gtk.CellRendererText()
             renderer.set_property("ellipsize", Pango.EllipsizeMode.END)
             col = Gtk.TreeViewColumn(title, renderer, text=idx)
             col.set_resizable(True)
-            col.set_min_width(width)
             col.set_sort_column_id(idx)
             self.drives_tree.append_column(col)
 
@@ -445,38 +462,43 @@ class HDControlApp(Gtk.Window):
         scroll.add(self.drives_tree)
         vbox.pack_start(scroll, True, True, 0)
 
-        # Barra de Edição do Item Selecionado
-        edit_card = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
+        # Barra de Edição do Item Selecionado (Grid compacto)
+        edit_card = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
         edit_card.get_style_context().add_class("card")
 
-        self.lbl_edit_id = Gtk.Label(label="Selecione um HD na tabela:")
+        row1 = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        self.lbl_edit_id = Gtk.Label(label="Selecione um HD acima:")
         self.lbl_edit_id.get_style_context().add_class("mono")
-        edit_card.pack_start(self.lbl_edit_id, False, False, 0)
+        row1.pack_start(self.lbl_edit_id, False, False, 0)
 
         self.combo_edit_status = Gtk.ComboBoxText()
         for st in ["Funcionando", "Com Defeito", "Em Teste", "Formatado", "SO Instalado"]:
             self.combo_edit_status.append_text(st)
         self.combo_edit_status.set_active(0)
-        edit_card.pack_start(self.combo_edit_status, False, False, 0)
+        row1.pack_start(self.combo_edit_status, False, False, 0)
 
         self.entry_edit_machine = Gtk.Entry()
         self.entry_edit_machine.set_placeholder_text("Máquina / Destino...")
-        edit_card.pack_start(self.entry_edit_machine, False, False, 0)
-
-        self.entry_edit_notes = Gtk.Entry()
-        self.entry_edit_notes.set_placeholder_text("Observações...")
-        self.entry_edit_notes.set_hexpand(True)
-        edit_card.pack_start(self.entry_edit_notes, True, True, 0)
+        self.entry_edit_machine.set_hexpand(True)
+        row1.pack_start(self.entry_edit_machine, True, True, 0)
 
         btn_save_edit = Gtk.Button(label="Salvar Alterações")
         btn_save_edit.get_style_context().add_class("primary-btn")
         btn_save_edit.connect("clicked", self._on_save_db_drive_edit)
-        edit_card.pack_start(btn_save_edit, False, False, 0)
+        row1.pack_end(btn_save_edit, False, False, 0)
 
         btn_del_drive = Gtk.Button(label="Excluir")
         btn_del_drive.get_style_context().add_class("danger-btn")
         btn_del_drive.connect("clicked", self._on_delete_db_drive)
-        edit_card.pack_start(btn_del_drive, False, False, 0)
+        row1.pack_end(btn_del_drive, False, False, 0)
+        edit_card.pack_start(row1, False, False, 0)
+
+        row2 = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        self.entry_edit_notes = Gtk.Entry()
+        self.entry_edit_notes.set_placeholder_text("Observações sobre o HD...")
+        self.entry_edit_notes.set_hexpand(True)
+        row2.pack_start(self.entry_edit_notes, True, True, 0)
+        edit_card.pack_start(row2, False, False, 0)
 
         vbox.pack_start(edit_card, False, False, 0)
         return vbox
@@ -485,17 +507,17 @@ class HDControlApp(Gtk.Window):
     # ABA 3: FORMATAR HD, GRAVAR SO (ISO/IMG) E COPIAR ARQUIVOS
     # =========================================================================
     def _build_format_os_page(self):
-        vbox = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
-        vbox.set_margin_top(12)
-        vbox.set_margin_bottom(12)
-        vbox.set_margin_start(16)
-        vbox.set_margin_end(16)
+        vbox = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+        vbox.set_margin_top(8)
+        vbox.set_margin_bottom(8)
+        vbox.set_margin_start(10)
+        vbox.set_margin_end(10)
 
         # Seleção do Disco Alvo (Apenas discos NÃO-sistema podem ser formatados)
-        target_card = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
+        target_card = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
         target_card.get_style_context().add_class("card-highlight")
 
-        lbl_t = Gtk.Label(label="DISCO ALVO (PORTA USB / SECUNDÁRIO):")
+        lbl_t = Gtk.Label(label="DISCO ALVO (USB / SECUNDÁRIO):")
         lbl_t.get_style_context().add_class("section-title")
         target_card.pack_start(lbl_t, False, False, 0)
 
@@ -503,17 +525,19 @@ class HDControlApp(Gtk.Window):
         self.combo_target_disk.set_hexpand(True)
         target_card.pack_start(self.combo_target_disk, True, True, 0)
 
-        btn_reload_targets = Gtk.Button(label="↻ Atualizar Discos")
+        btn_reload_targets = Gtk.Button(label="↻ Atualizar")
         btn_reload_targets.connect("clicked", lambda _: self.refresh_connected_disks())
         target_card.pack_start(btn_reload_targets, False, False, 0)
 
         vbox.pack_start(target_card, False, False, 0)
 
-        # Grid de 3 Módulos: (1) Formatação, (2) Instalação de SO / Imagem ISO, (3) Cópia de Arquivos/Pastas
-        cols_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
+        # Notebook de Operações (Abas separadas em vez de 3 cards lado a lado)
+        notebook = Gtk.Notebook()
+        notebook.set_scrollable(True)
 
         # --- MÓDULO 1: FORMATAÇÃO ---
-        fmt_card = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
+        fmt_card = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+        fmt_card.set_border_width(10)
         fmt_card.get_style_context().add_class("card")
 
         lbl_f1 = Gtk.Label(label="1. FORMATAR HD / SSD")
@@ -554,12 +578,13 @@ class HDControlApp(Gtk.Window):
         btn_do_format = Gtk.Button(label="⚙ Formatar Disco Selecionado")
         btn_do_format.get_style_context().add_class("primary-btn")
         btn_do_format.connect("clicked", self._on_execute_format)
-        fmt_card.pack_end(btn_do_format, False, False, 0)
+        fmt_card.pack_start(btn_do_format, False, False, 4)
 
-        cols_box.pack_start(fmt_card, True, True, 0)
+        notebook.append_page(fmt_card, Gtk.Label(label="1. Formatar HD/SSD"))
 
         # --- MÓDULO 2: INSTALAR SO / GRAVAR IMAGEM ISO / CLONAR ---
-        iso_card = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
+        iso_card = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+        iso_card.set_border_width(10)
         iso_card.get_style_context().add_class("card")
 
         lbl_f2 = Gtk.Label(label="2. INSTALAR SO / GRAVAR ISO OU IMG")
@@ -568,7 +593,7 @@ class HDControlApp(Gtk.Window):
         iso_card.pack_start(lbl_f2, False, False, 0)
 
         lbl_f2_sub = Gtk.Label(
-            label="Grava uma imagem de Sistema Operacional (.iso / .img) diretamente no HD externo ou abre com VirtualBox."
+            label="Grava uma imagem de Sistema Operacional (.iso / .img) diretamente no HD externo."
         )
         lbl_f2_sub.set_xalign(0)
         lbl_f2_sub.set_line_wrap(True)
@@ -596,12 +621,13 @@ class HDControlApp(Gtk.Window):
         btn_flash_iso = Gtk.Button(label="💿 Gravar Imagem de SO no Disco (Direct Flash)")
         btn_flash_iso.get_style_context().add_class("primary-btn")
         btn_flash_iso.connect("clicked", self._on_execute_flash_iso)
-        iso_card.pack_end(btn_flash_iso, False, False, 0)
+        iso_card.pack_start(btn_flash_iso, False, False, 4)
 
-        cols_box.pack_start(iso_card, True, True, 0)
+        notebook.append_page(iso_card, Gtk.Label(label="2. Gravar Imagem de SO (ISO/IMG)"))
 
         # --- MÓDULO 3: COPIAR ARQUIVOS / PASTAS PADRÃO ---
-        copy_card = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
+        copy_card = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+        copy_card.set_border_width(10)
         copy_card.get_style_context().add_class("card")
 
         lbl_f3 = Gtk.Label(label="3. TRANSFERIR ARQUIVOS / KIT PADRÃO")
@@ -610,7 +636,7 @@ class HDControlApp(Gtk.Window):
         copy_card.pack_start(lbl_f3, False, False, 0)
 
         lbl_f3_sub = Gtk.Label(
-            label="Monta automaticamente a partição do HD externo e copia pastas, instaladores, drivers ou backups."
+            label="Monta a partição do HD externo e copia pastas, instaladores ou drivers."
         )
         lbl_f3_sub.set_xalign(0)
         lbl_f3_sub.set_line_wrap(True)
@@ -620,11 +646,11 @@ class HDControlApp(Gtk.Window):
         pick_btns = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
         btn_add_files = Gtk.Button(label="+ Arquivos")
         btn_add_files.connect("clicked", self._on_add_copy_files)
-        pick_btns.pack_start(btn_add_files, True, True, 0)
+        pick_btns.pack_start(btn_add_files, False, False, 0)
 
         btn_add_folder = Gtk.Button(label="+ Pasta")
         btn_add_folder.connect("clicked", self._on_add_copy_folder)
-        pick_btns.pack_start(btn_add_folder, True, True, 0)
+        pick_btns.pack_start(btn_add_folder, False, False, 0)
 
         btn_clear_copy = Gtk.Button(label="Limpar")
         btn_clear_copy.connect("clicked", self._on_clear_copy_list)
@@ -635,7 +661,7 @@ class HDControlApp(Gtk.Window):
         self.lbl_copy_list.set_xalign(0)
         self.lbl_copy_list.set_line_wrap(True)
         self.lbl_copy_list.get_style_context().add_class("mono")
-        copy_card.pack_start(self.lbl_copy_list, True, True, 0)
+        copy_card.pack_start(self.lbl_copy_list, False, False, 0)
 
         subf_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
         subf_box.pack_start(Gtk.Label(label="Subpasta destino:", xalign=0), False, False, 0)
@@ -647,13 +673,14 @@ class HDControlApp(Gtk.Window):
         btn_do_copy = Gtk.Button(label="📁 Montar HD e Copiar Arquivos")
         btn_do_copy.get_style_context().add_class("primary-btn")
         btn_do_copy.connect("clicked", self._on_execute_copy_files)
-        copy_card.pack_end(btn_do_copy, False, False, 0)
+        copy_card.pack_start(btn_do_copy, False, False, 4)
 
-        cols_box.pack_start(copy_card, True, True, 0)
-        vbox.pack_start(cols_box, False, False, 0)
+        notebook.append_page(copy_card, Gtk.Label(label="3. Transferir Arquivos / Pastas"))
+
+        vbox.pack_start(notebook, False, False, 0)
 
         # Console de Saída de Provisionamento
-        lbl_con = Gtk.Label(label="LOG DE EXECUÇÃO (FORMATAÇÃO / GRAVAÇÃO DE SO / CÓPIA DE ARQUIVOS)")
+        lbl_con = Gtk.Label(label="LOG DE EXECUÇÃO")
         lbl_con.set_xalign(0)
         lbl_con.get_style_context().add_class("stat-label")
         vbox.pack_start(lbl_con, False, False, 0)
@@ -663,58 +690,56 @@ class HDControlApp(Gtk.Window):
         self.provision_textview.get_style_context().add_class("mono")
         scroll_p = Gtk.ScrolledWindow()
         scroll_p.set_policy(Gtk.PolicyType.AUTOMATIC, Gtk.PolicyType.AUTOMATIC)
+        scroll_p.set_size_request(-1, 130)
         scroll_p.set_vexpand(True)
         scroll_p.add(self.provision_textview)
         vbox.pack_start(scroll_p, True, True, 0)
-
         return vbox
 
     # =========================================================================
     # ABA 4: COMPUTADORES & BANCADA (IMPORTADO DE 'computadores' / LEIA)
     # =========================================================================
     def _build_lab_pcs_page(self):
-        vbox = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
-        vbox.set_margin_top(12)
-        vbox.set_margin_bottom(12)
-        vbox.set_margin_start(16)
-        vbox.set_margin_end(16)
+        vbox = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+        vbox.set_margin_top(8)
+        vbox.set_margin_bottom(8)
+        vbox.set_margin_start(10)
+        vbox.set_margin_end(10)
 
-        hdr = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
-        lbl = Gtk.Label(label="LEVANTAMENTO DE COMPUTADORES E PERIFÉRICOS (BANCADA / LABORATÓRIO)")
+        hdr = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        lbl = Gtk.Label(label="LEVANTAMENTO DE COMPUTADORES E PERIFÉRICOS")
         lbl.get_style_context().add_class("section-title")
         hdr.pack_start(lbl, True, True, 0)
 
-        btn_add_pc_group = Gtk.Button(label="+ Adicionar Lote / Equipamento")
+        btn_add_pc_group = Gtk.Button(label="+ Adicionar Lote")
         btn_add_pc_group.connect("clicked", self._on_add_lab_item_dialog)
         hdr.pack_end(btn_add_pc_group, False, False, 0)
         vbox.pack_start(hdr, False, False, 0)
 
         # TreeView de lotes de computadores
-        # 0:ID, 1:Categoria, 2:Marca/Modelo, 3:Total, 4:Funcionando, 5:Sem Funcionar, 6:Com RAM, 7:Sem RAM, 8:Com HDD, 9:Com SSD, 10:Sem HD/SSD, 11:Notas
         self.lab_store = Gtk.ListStore(int, str, str, int, int, int, int, int, int, int, int, str)
         self.lab_tree = Gtk.TreeView(model=self.lab_store)
         self.lab_tree.get_selection().connect("changed", self._on_lab_item_selected)
 
         cols = [
-            ("ID", 0, 40),
-            ("Categoria", 1, 95),
-            ("Marca / Modelo", 2, 165),
-            ("Total", 3, 60),
-            ("Funcionando", 4, 95),
-            ("Sem Funcionar", 5, 105),
-            ("Com RAM", 6, 80),
-            ("Sem RAM", 7, 80),
-            ("Com HDD", 8, 80),
-            ("Com SSD", 9, 80),
-            ("Sem HD/SSD", 10, 95),
-            ("Observações / Peças Necessárias", 11, 260),
+            ("ID", 0, 35),
+            ("Cat.", 1, 75),
+            ("Marca / Modelo", 2, 130),
+            ("Total", 3, 50),
+            ("Func.", 4, 55),
+            ("Sem Func.", 5, 70),
+            ("Com RAM", 6, 65),
+            ("Sem RAM", 7, 65),
+            ("HDD", 8, 45),
+            ("SSD", 9, 45),
+            ("Sem HD/SSD", 10, 80),
+            ("Observações / Peças", 11, 160),
         ]
         for title, idx, width in cols:
             renderer = Gtk.CellRendererText()
             renderer.set_property("ellipsize", Pango.EllipsizeMode.END)
             col = Gtk.TreeViewColumn(title, renderer, text=idx)
             col.set_resizable(True)
-            col.set_min_width(width)
             self.lab_tree.append_column(col)
 
         scroll = Gtk.ScrolledWindow()
@@ -723,15 +748,15 @@ class HDControlApp(Gtk.Window):
         scroll.add(self.lab_tree)
         vbox.pack_start(scroll, True, True, 0)
 
-        # Painel de atualização rápida das contagens
-        edit_card = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+        # Painel de atualização rápida das contagens (Grid 4 colunas compacto)
+        edit_card = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
         edit_card.get_style_context().add_class("card")
 
         lbl_ed = Gtk.Label(label="ATUALIZAR CONTAGEM DO LOTE SELECIONADO", xalign=0)
         lbl_ed.get_style_context().add_class("stat-label")
         edit_card.pack_start(lbl_ed, False, False, 0)
 
-        grid = Gtk.Grid(column_spacing=10, row_spacing=8)
+        grid = Gtk.Grid(column_spacing=8, row_spacing=6)
         self.entry_lab_brand = Gtk.Entry()
         self.spin_lab_total = Gtk.SpinButton.new_with_range(0, 999, 1)
         self.spin_lab_working = Gtk.SpinButton.new_with_range(0, 999, 1)
@@ -748,29 +773,31 @@ class HDControlApp(Gtk.Window):
         grid.attach(self.entry_lab_brand, 1, 0, 1, 1)
         grid.attach(Gtk.Label(label="Total:", xalign=0), 2, 0, 1, 1)
         grid.attach(self.spin_lab_total, 3, 0, 1, 1)
-        grid.attach(Gtk.Label(label="Funcionando:", xalign=0), 4, 0, 1, 1)
-        grid.attach(self.spin_lab_working, 5, 0, 1, 1)
-        grid.attach(Gtk.Label(label="Sem Funcionar:", xalign=0), 6, 0, 1, 1)
-        grid.attach(self.spin_lab_not_working, 7, 0, 1, 1)
 
-        grid.attach(Gtk.Label(label="Com HDD:", xalign=0), 0, 1, 1, 1)
-        grid.attach(self.spin_lab_with_hdd, 1, 1, 1, 1)
-        grid.attach(Gtk.Label(label="Com SSD:", xalign=0), 2, 1, 1, 1)
-        grid.attach(self.spin_lab_with_ssd, 3, 1, 1, 1)
-        grid.attach(Gtk.Label(label="Sem HD/SSD:", xalign=0), 4, 1, 1, 1)
-        grid.attach(self.spin_lab_no_storage, 5, 1, 1, 1)
-        grid.attach(Gtk.Label(label="Com RAM:", xalign=0), 6, 1, 1, 1)
-        grid.attach(self.spin_lab_with_ram, 7, 1, 1, 1)
+        grid.attach(Gtk.Label(label="Funcionando:", xalign=0), 0, 1, 1, 1)
+        grid.attach(self.spin_lab_working, 1, 1, 1, 1)
+        grid.attach(Gtk.Label(label="Sem Funcionar:", xalign=0), 2, 1, 1, 1)
+        grid.attach(self.spin_lab_not_working, 3, 1, 1, 1)
 
-        grid.attach(Gtk.Label(label="Sem RAM:", xalign=0), 0, 2, 1, 1)
-        grid.attach(self.spin_lab_no_ram, 1, 2, 1, 1)
-        grid.attach(Gtk.Label(label="Observações:", xalign=0), 2, 2, 1, 1)
-        grid.attach(self.entry_lab_notes, 3, 2, 4, 1)
+        grid.attach(Gtk.Label(label="Com HDD:", xalign=0), 0, 2, 1, 1)
+        grid.attach(self.spin_lab_with_hdd, 1, 2, 1, 1)
+        grid.attach(Gtk.Label(label="Com SSD:", xalign=0), 2, 2, 1, 1)
+        grid.attach(self.spin_lab_with_ssd, 3, 2, 1, 1)
 
-        btn_save_lab = Gtk.Button(label="Salvar Lote")
+        grid.attach(Gtk.Label(label="Sem HD/SSD:", xalign=0), 0, 3, 1, 1)
+        grid.attach(self.spin_lab_no_storage, 1, 3, 1, 1)
+        grid.attach(Gtk.Label(label="Com RAM:", xalign=0), 2, 3, 1, 1)
+        grid.attach(self.spin_lab_with_ram, 3, 3, 1, 1)
+
+        grid.attach(Gtk.Label(label="Sem RAM:", xalign=0), 0, 4, 1, 1)
+        grid.attach(self.spin_lab_no_ram, 1, 4, 1, 1)
+        btn_save_lab = Gtk.Button(label="Salvar Alterações do Lote")
         btn_save_lab.get_style_context().add_class("primary-btn")
         btn_save_lab.connect("clicked", self._on_save_lab_item)
-        grid.attach(btn_save_lab, 7, 2, 1, 1)
+        grid.attach(btn_save_lab, 2, 4, 2, 1)
+
+        grid.attach(Gtk.Label(label="Observações:", xalign=0), 0, 5, 1, 1)
+        grid.attach(self.entry_lab_notes, 1, 5, 3, 1)
 
         edit_card.pack_start(grid, False, False, 0)
         vbox.pack_start(edit_card, False, False, 0)
