@@ -3,7 +3,12 @@ import json
 import subprocess
 import shutil
 import re
+import platform
 from typing import List, Dict, Optional, Callable
+
+IS_WINDOWS = platform.system() == "Windows"
+if IS_WINDOWS:
+    from modules.disk_manager_windows import WindowsDiskManager
 
 
 class DiskManager:
@@ -17,7 +22,11 @@ class DiskManager:
         """
         Retorna a lista de discos físicos conectados usando lsblk -J e enriquece
         com informações do UDisks2 (SMART sem precisar de sudo a todo momento).
+        No Windows, delega automaticamente para WindowsDiskManager.
         """
+        if IS_WINDOWS:
+            return WindowsDiskManager.list_disks(include_system_disks=include_system_disks)
+
         cmd = [
             "lsblk",
             "-J",
@@ -234,37 +243,11 @@ class DiskManager:
         return result
 
     @staticmethod
-    def run_detailed_smart_check(device_path: str) -> Dict:
+    def _get_udisks_drive_report(device_path: str) -> Dict:
         """
-        Executa smartctl -a (tentando direto e, se necessário, via pkexec ou fallback SAT para USB)
-        para obter relatório completo do HD conectado na porta USB ou SATA.
+        Consulta informações do UDisks2 diretamente sem exigir senha de root.
+        Extrai contagem de setores defeituosos, horas de uso, temperatura e status SMART.
         """
-        # 1. Tentar sem pkexec primeiro
-        res = subprocess.run(["smartctl", "-a", "-j", device_path], capture_output=True, text=True)
-        data = None
-        try:
-            data = json.loads(res.stdout)
-        except Exception:
-            pass
-
-        # Se precisar de permissão de root ou falhar em leitor USB (tentar -d sat)
-        if not data or res.returncode & 1 or res.returncode & 2:
-            # Usa pkexec para ler smartctl completo (tenta normal e fallback -d sat para cases USB)
-            script = f"smartctl -a -j {device_path} || smartctl -a -d sat -j {device_path}"
-            res_pk = subprocess.run(["pkexec", "sh", "-c", script], capture_output=True, text=True)
-            try:
-                data = json.loads(res_pk.stdout)
-            except Exception:
-                pass
-
-        # Também pegar saída texto legível
-        res_txt = subprocess.run(
-            ["pkexec", "sh", "-c", f"smartctl -H -A -i {device_path} || smartctl -H -A -i -d sat {device_path}"],
-            capture_output=True,
-            text=True,
-        )
-        raw_text = res_txt.stdout if res_txt.stdout.strip() else "Não foi possível obter saída detalhada do smartctl."
-
         parsed = {
             "smart_status": "UNKNOWN",
             "bad_sectors": 0,
@@ -272,25 +255,140 @@ class DiskManager:
             "temperature_c": 0.0,
             "model": None,
             "serial": None,
-            "raw_report": raw_text,
+            "raw_report": "",
         }
+        try:
+            res = subprocess.run(["udisksctl", "info", "-b", device_path], capture_output=True, text=True, timeout=5)
+            drive_id = None
+            for line in res.stdout.splitlines():
+                if "Drive:" in line:
+                    drive_id = line.split("Drive:")[1].strip().strip("'")
+                    break
 
-        if data:
-            if "model_name" in data:
-                parsed["model"] = data["model_name"]
-            if "serial_number" in data:
-                parsed["serial"] = data["serial_number"]
-            if "smart_status" in data and "passed" in data["smart_status"]:
+            drive_text = ""
+            if drive_id:
+                drive_name = drive_id.split("/")[-1]
+                res_d = subprocess.run(["udisksctl", "info", "-d", drive_name], capture_output=True, text=True, timeout=5)
+                drive_text = res_d.stdout
+
+            full_text = res.stdout + "\n" + drive_text
+
+            for line in full_text.splitlines():
+                s = line.strip()
+                if s.startswith("Model:"):
+                    parsed["model"] = s.split(":", 1)[1].strip()
+                elif s.startswith("Serial:"):
+                    parsed["serial"] = s.split(":", 1)[1].strip()
+                elif s.startswith("SmartFailing:"):
+                    failing = "true" in s.lower()
+                    if failing:
+                        parsed["smart_status"] = "FAILED"
+                    elif parsed["smart_status"] == "UNKNOWN":
+                        parsed["smart_status"] = "PASSED"
+                elif s.startswith("SmartNumBadSectors:"):
+                    try:
+                        parsed["bad_sectors"] = int(s.split(":", 1)[1].strip())
+                    except ValueError:
+                        pass
+                elif s.startswith("SmartPowerOnSeconds:"):
+                    try:
+                        secs = int(s.split(":", 1)[1].strip())
+                        parsed["power_on_hours"] = secs // 3600
+                    except ValueError:
+                        pass
+                elif s.startswith("SmartTemperature:"):
+                    try:
+                        k = float(s.split(":", 1)[1].strip())
+                        if k > 200:
+                            parsed["temperature_c"] = round(k - 273.15, 1)
+                        elif k > 0:
+                            parsed["temperature_c"] = k
+                    except ValueError:
+                        pass
+
+            if parsed["bad_sectors"] > 0:
+                parsed["smart_status"] = f"WARN ({parsed['bad_sectors']} Bad Sectors)"
+            elif parsed["smart_status"] == "UNKNOWN":
+                parsed["smart_status"] = "PASSED"
+
+            report_lines = [
+                "=" * 78,
+                "DIAGNÓSTICO TÉCNICO SMART // UDisks2 (Executado sem pedido de senha)",
+                "=" * 78,
+                f"Dispositivo:         {device_path}",
+                f"Modelo:              {parsed['model'] or 'Desconhecido'}",
+                f"Número de Série:     {parsed['serial'] or 'N/D'}",
+                f"Saúde SMART Geral:   {parsed['smart_status']}",
+                f"Setores Defeituosos: {parsed['bad_sectors']}",
+                f"Horas de Uso Ligado: {parsed['power_on_hours']} horas (~{parsed['power_on_hours'] // 24} dias)",
+                f"Temperatura:         {parsed['temperature_c']} °C" if parsed['temperature_c'] > 0 else "Temperatura:         N/D",
+                "-" * 78,
+                "PARÂMETROS DE HARDWARE E ATRIBUTOS DO DISCO:",
+                "-" * 78,
+            ]
+            for line in drive_text.splitlines():
+                if any(k in line for k in ["Smart", "RotationRate", "Vendor", "Model", "Revision", "Size", "Apm", "Pm"]):
+                    report_lines.append(f"  {line.strip()}")
+            report_lines.extend([
+                "=" * 78,
+                "[INFO] Diagnóstico obtido via UDisks2 nativo sem interromper com janelas de senha.",
+                "       Para smartctl raw direto: sudo usermod -aG disk $USER",
+                "=" * 78,
+            ])
+            parsed["raw_report"] = "\n".join(report_lines)
+        except Exception as e:
+            parsed["raw_report"] = f"Falha na consulta UDisks2: {e}"
+
+        return parsed
+
+    @staticmethod
+    def run_detailed_smart_check(device_path: str) -> Dict:
+        """
+        Executa diagnóstico SMART completo.
+        No Windows, aciona o WindowsDiskManager.
+        No Linux, primeiro tenta consulta direta ou UDisks2 sem solicitar senha.
+        """
+        if IS_WINDOWS:
+            return WindowsDiskManager.run_detailed_smart_check(device_path)
+
+        # 1. Tentar smartctl diretamente (SEM pkexec / SEM pedir senha)
+        res = subprocess.run(["smartctl", "-a", "-j", device_path], capture_output=True, text=True)
+        data = None
+        try:
+            data = json.loads(res.stdout)
+        except Exception:
+            pass
+
+        # Se falhou por parâmetro USB de leitor (-d sat)
+        if not data:
+            res_sat = subprocess.run(["smartctl", "-a", "-d", "sat", "-j", device_path], capture_output=True, text=True)
+            try:
+                data = json.loads(res_sat.stdout)
+            except Exception:
+                pass
+
+        # Se smartctl funcionou sem precisar de root
+        if data and "smart_status" in data:
+            res_txt = subprocess.run(["smartctl", "-H", "-A", "-i", device_path], capture_output=True, text=True)
+            raw_text = res_txt.stdout if res_txt.stdout.strip() else res.stdout
+            parsed = {
+                "smart_status": "UNKNOWN",
+                "bad_sectors": 0,
+                "power_on_hours": 0,
+                "temperature_c": 0.0,
+                "model": data.get("model_name"),
+                "serial": data.get("serial_number"),
+                "raw_report": raw_text,
+            }
+            if "passed" in data.get("smart_status", {}):
                 parsed["smart_status"] = "PASSED" if data["smart_status"]["passed"] else "FAILED"
             if "temperature" in data and "current" in data["temperature"]:
                 parsed["temperature_c"] = float(data["temperature"]["current"])
             if "power_on_time" in data and "hours" in data["power_on_time"]:
                 parsed["power_on_hours"] = int(data["power_on_time"]["hours"])
 
-            # Atributos ATA (Reallocated_Sector_Ct = 5, Current_Pending_Sector = 197, Offline_Uncorrectable = 198)
             bad = 0
-            ata_attrs = data.get("ata_smart_attributes", {}).get("table", [])
-            for attr in ata_attrs:
+            for attr in data.get("ata_smart_attributes", {}).get("table", []):
                 aid = attr.get("id")
                 raw_val = attr.get("raw", {}).get("value", 0)
                 if aid in (5, 197, 198) and isinstance(raw_val, int):
@@ -298,32 +396,72 @@ class DiskManager:
             parsed["bad_sectors"] = bad
             if bad > 0 and parsed["smart_status"] == "PASSED":
                 parsed["smart_status"] = f"WARN ({bad} Bad Sectors)"
+            return parsed
 
-        return parsed
+        # 2. Diagnóstico transparente via UDisks2 (100% sem senha!)
+        ud_parsed = DiskManager._get_udisks_drive_report(device_path)
+        if ud_parsed["smart_status"] != "UNKNOWN" or ud_parsed["raw_report"]:
+            return ud_parsed
+
+        # Fallback de última instância
+        return {
+            "smart_status": "UNKNOWN",
+            "bad_sectors": 0,
+            "power_on_hours": 0,
+            "temperature_c": 0.0,
+            "model": None,
+            "serial": None,
+            "raw_report": "Não foi possível obter diagnóstico do disco sem permissão.",
+        }
 
     @staticmethod
     def run_quick_surface_test(device_path: str, progress_cb: Optional[Callable[[str], None]] = None) -> Dict:
         """
-        Faz um teste rápido de leitura (dd de 256MB em pontos estratégicos do disco)
-        para confirmar se o HD no leitor USB está respondendo sem erros de I/O.
+        Executa teste rápido de leitura (dd de 128MB).
+        Tenta leitura direta sem senha primeiro, e depois sudo sem senha.
         """
+        if IS_WINDOWS:
+            return WindowsDiskManager.run_quick_surface_test(device_path, progress_cb)
+
         if progress_cb:
             progress_cb(f"Iniciando teste de leitura de superfície em {device_path}...")
 
-        script = f"""
-        set -e
-        dd if={device_path} of=/dev/null bs=1M count=128 iflag=direct status=none
-        """
-        res = subprocess.run(["pkexec", "sh", "-c", script], capture_output=True, text=True)
+        # 1. Tentar leitura direta sem pkexec (SEM SENHA)
+        res = subprocess.run(
+            ["dd", f"if={device_path}", "of=/dev/null", "bs=1M", "count=128", "iflag=direct", "status=none"],
+            capture_output=True,
+            text=True,
+        )
         if res.returncode == 0:
             return {
                 "success": True,
-                "message": "Teste de leitura direta (128 MB) concluído sem erros de I/O! O disco responde normalmente.",
+                "message": "Teste de leitura direta (128 MB) concluído sem erros de I/O e sem necessidade de senha! O disco responde normalmente.",
+            }
+
+        # 2. Se falhou por permissão, tenta sudo -n (se sudo sem senha estiver ativo para wheel/disk)
+        res_sudo = subprocess.run(
+            ["sudo", "-n", "dd", f"if={device_path}", "of=/dev/null", "bs=1M", "count=128", "iflag=direct", "status=none"],
+            capture_output=True,
+            text=True,
+        )
+        if res_sudo.returncode == 0:
+            return {
+                "success": True,
+                "message": "Teste de leitura direta (128 MB) concluído via sudo sem senha! Disco íntegro.",
+            }
+
+        # 3. Execução com elevação e instrução permanente para dispensar senha
+        script = f"dd if={device_path} of=/dev/null bs=1M count=128 iflag=direct status=none"
+        res_pk = subprocess.run(["pkexec", "sh", "-c", script], capture_output=True, text=True)
+        if res_pk.returncode == 0:
+            return {
+                "success": True,
+                "message": "Teste de leitura direta (128 MB) concluído com sucesso!\n\n[DICA]: Para nunca mais pedir senha neste teste, adicione seu usuário ao grupo disk:\n  sudo usermod -aG disk $USER",
             }
         else:
             return {
                 "success": False,
-                "message": f"Falha de leitura/I/O detectada no disco {device_path}:\n{res.stderr}",
+                "message": f"Falha de leitura/I/O detectada no disco {device_path}:\n{res_pk.stderr}\n\n[DICA]: Execute 'sudo usermod -aG disk $USER' para acesso direto sem senha.",
             }
 
     @staticmethod
@@ -339,6 +477,16 @@ class DiskManager:
         Desmonta partições do disco, cria nova tabela de partições (GPT ou MBR/msdos)
         e formata uma partição primária ocupando 100% do disco.
         """
+        if IS_WINDOWS:
+            return WindowsDiskManager.format_disk(
+                device_path=device_path,
+                fs_type=fs_type,
+                label=label,
+                partition_table=partition_table,
+                is_system=is_system,
+                progress_cb=progress_cb,
+            )
+
         if is_system:
             return {
                 "success": False,

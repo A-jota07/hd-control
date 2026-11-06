@@ -113,6 +113,11 @@ class HDControlApp(Gtk.Window):
         sidebar.set_margin_end(0)
         sidebar.set_border_width(8)
 
+        sidebar_scroll = Gtk.ScrolledWindow()
+        sidebar_scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+        sidebar_scroll.set_size_request(218, -1)
+        sidebar_scroll.add(sidebar)
+
         self.stack = Gtk.Stack()
         self.stack.set_transition_type(Gtk.StackTransitionType.CROSSFADE)
         self.stack.set_transition_duration(150)
@@ -127,11 +132,14 @@ class HDControlApp(Gtk.Window):
         ]
 
         for page_id, page_title, widget in pages:
-            # Envolve cada página em um ScrolledWindow para liberar redimensionamento total da janela
-            scrolled = Gtk.ScrolledWindow()
-            scrolled.set_policy(Gtk.PolicyType.AUTOMATIC, Gtk.PolicyType.AUTOMATIC)
-            scrolled.add(widget)
-            self.stack.add_named(scrolled, page_id)
+            if page_id == "scanner":
+                # A tela do scanner (paned) gerencia a rolagem interna de forma responsiva
+                self.stack.add_named(widget, page_id)
+            else:
+                scrolled = Gtk.ScrolledWindow()
+                scrolled.set_policy(Gtk.PolicyType.AUTOMATIC, Gtk.PolicyType.AUTOMATIC)
+                scrolled.add(widget)
+                self.stack.add_named(scrolled, page_id)
 
             btn = Gtk.Button(label=page_title)
             btn.set_relief(Gtk.ReliefStyle.NONE)
@@ -161,7 +169,7 @@ class HDControlApp(Gtk.Window):
         btn_export.connect("clicked", self._export_csv_dialog)
         sidebar.pack_start(btn_export, False, False, 0)
 
-        body_hbox.pack_start(sidebar, False, False, 0)
+        body_hbox.pack_start(sidebar_scroll, False, False, 0)
         body_hbox.pack_start(self.stack, True, True, 0)
 
         # --- STATUS BAR ---
@@ -227,7 +235,8 @@ class HDControlApp(Gtk.Window):
         paned.set_margin_bottom(8)
         paned.set_margin_start(10)
         paned.set_margin_end(10)
-        paned.set_position(360)
+        paned.set_position(340)
+        paned.set_wide_handle(True)
 
         # Lado Esquerdo: Lista de Discos Físicos Conectados
         left_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
@@ -284,9 +293,11 @@ class HDControlApp(Gtk.Window):
         # Lado Direito: Painel de Inspeção, Aprovação Rápida e Diagnóstico SMART
         right_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
         right_box.set_margin_start(6)
+        right_box.set_hexpand(True)
 
         card_detail = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
         card_detail.get_style_context().add_class("card")
+        card_detail.set_hexpand(True)
 
         self.lbl_sel_disk_title = Gtk.Label(label="Selecione um disco à esquerda")
         self.lbl_sel_disk_title.set_xalign(0)
@@ -302,8 +313,10 @@ class HDControlApp(Gtk.Window):
         self.lbl_sel_disk_meta.get_style_context().add_class("mono")
         card_detail.pack_start(self.lbl_sel_disk_meta, False, False, 0)
 
-        # Botões de Diagnóstico Técnico (Grid responsivo)
+        # Botões de Diagnóstico Técnico (Grid responsivo de 2 colunas para nunca truncar na lateral)
         diag_grid = Gtk.Grid(column_spacing=6, row_spacing=6)
+        diag_grid.set_hexpand(True)
+
         btn_smart_deep = Gtk.Button(label="🔍 Diagnóstico SMART")
         btn_smart_deep.set_hexpand(True)
         btn_smart_deep.connect("clicked", self._on_run_deep_smart)
@@ -313,11 +326,12 @@ class HDControlApp(Gtk.Window):
         btn_surf_test.connect("clicked", self._on_run_surface_test)
 
         btn_go_format = Gtk.Button(label="⚙ Formatar / SO →")
+        btn_go_format.set_hexpand(True)
         btn_go_format.connect("clicked", self._on_jump_to_format)
 
         diag_grid.attach(btn_smart_deep, 0, 0, 1, 1)
         diag_grid.attach(btn_surf_test, 1, 0, 1, 1)
-        diag_grid.attach(btn_go_format, 2, 0, 1, 1)
+        diag_grid.attach(btn_go_format, 0, 1, 2, 1)
         card_detail.pack_start(diag_grid, False, False, 0)
 
         # Formulário de Classificação Rápida no Controle de HDs
@@ -330,6 +344,7 @@ class HDControlApp(Gtk.Window):
         card_detail.pack_start(lbl_reg, False, False, 0)
 
         grid_reg = Gtk.Grid(column_spacing=8, row_spacing=6)
+        grid_reg.set_hexpand(True)
         lbl_m = Gtk.Label(label="Máquina/Destino:")
         lbl_m.set_xalign(0)
         self.entry_quick_machine = Gtk.Entry()
@@ -348,22 +363,28 @@ class HDControlApp(Gtk.Window):
         grid_reg.attach(self.entry_quick_notes, 1, 1, 1, 1)
         card_detail.pack_start(grid_reg, False, False, 0)
 
-        verdict_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+        verdict_grid = Gtk.Grid(column_spacing=6, row_spacing=6)
+        verdict_grid.set_hexpand(True)
+
         btn_mark_ok = Gtk.Button(label="✓ FUNCIONANDO")
         btn_mark_ok.get_style_context().add_class("primary-btn")
+        btn_mark_ok.set_hexpand(True)
         btn_mark_ok.connect("clicked", self._on_quick_classify, "Funcionando")
-        verdict_box.pack_start(btn_mark_ok, True, True, 0)
 
         btn_mark_bad = Gtk.Button(label="✕ COM DEFEITO")
         btn_mark_bad.get_style_context().add_class("danger-btn")
+        btn_mark_bad.set_hexpand(True)
         btn_mark_bad.connect("clicked", self._on_quick_classify, "Com Defeito")
-        verdict_box.pack_start(btn_mark_bad, True, True, 0)
 
         btn_mark_test = Gtk.Button(label="⏳ EM TESTE")
+        btn_mark_test.set_hexpand(True)
         btn_mark_test.connect("clicked", self._on_quick_classify, "Em Teste")
-        verdict_box.pack_start(btn_mark_test, True, True, 0)
 
-        card_detail.pack_start(verdict_box, False, False, 0)
+        verdict_grid.attach(btn_mark_ok, 0, 0, 1, 1)
+        verdict_grid.attach(btn_mark_bad, 1, 0, 1, 1)
+        verdict_grid.attach(btn_mark_test, 0, 1, 2, 1)
+
+        card_detail.pack_start(verdict_grid, False, False, 0)
         right_box.pack_start(card_detail, False, False, 0)
 
         # Saída do Relatório SMART / Partições
@@ -379,14 +400,16 @@ class HDControlApp(Gtk.Window):
 
         scroll_rep = Gtk.ScrolledWindow()
         scroll_rep.set_policy(Gtk.PolicyType.AUTOMATIC, Gtk.PolicyType.AUTOMATIC)
-        scroll_rep.set_size_request(-1, 150)
+        scroll_rep.set_size_request(-1, 140)
         scroll_rep.set_vexpand(True)
         scroll_rep.add(self.smart_textview)
         right_box.pack_start(scroll_rep, True, True, 0)
 
-        # Envolve o lado direito em um ScrolledWindow para não estourar telas baixas
+        # Envolve o lado direito em um ScrolledWindow responsivo nos dois eixos
         right_scroll = Gtk.ScrolledWindow()
-        right_scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+        right_scroll.set_policy(Gtk.PolicyType.AUTOMATIC, Gtk.PolicyType.AUTOMATIC)
+        right_scroll.set_hexpand(True)
+        right_scroll.set_vexpand(True)
         right_scroll.add(right_box)
 
         paned.pack1(left_box, resize=True, shrink=True)
@@ -1157,12 +1180,16 @@ class HDControlApp(Gtk.Window):
         drive_id = getattr(self, "_selected_db_drive_id", None)
         if not drive_id:
             return
-        if self._confirm_dialog("Excluir Registro", f"Deseja remover o registro #{drive_id} da lista de controle?"):
+        if self._confirm_dialog(
+            "Excluir Registro",
+            f"Deseja remover o registro #{drive_id} da lista de controle?\n\n"
+            f"A numeração dos demais HDs será ajustada dinamicamente para ocupar este espaço (sem pular números)."
+        ):
             self.db.delete_drive(drive_id)
             self._selected_db_drive_id = None
             self.refresh_drives_table()
             self.refresh_connected_disks()
-            self.set_status(f"Registro #{drive_id} removido.")
+            self.set_status(f"Registro #{drive_id} removido. Numeração reordenada dinamicamente.")
 
     def _on_add_manual_drive_dialog(self, _btn):
         dialog = Gtk.Dialog(title="Cadastrar HD / SSD Manualmente", transient_for=self, flags=0)
@@ -1534,23 +1561,51 @@ class HDControlApp(Gtk.Window):
     # =========================================================================
     def _open_gsmartcontrol(self, _btn):
         try:
-            subprocess.Popen(["pkexec", "gsmartcontrol"])
-            self.set_status("Abrindo GSmartControl...")
+            if sys.platform == "win32":
+                gsmart_path = shutil.which("gsmartcontrol") or r"C:\Program Files\GSmartControl\gsmartcontrol.exe"
+                if os.path.exists(gsmart_path) or shutil.which("gsmartcontrol"):
+                    subprocess.Popen([gsmart_path])
+                    self.set_status("Abrindo GSmartControl no Windows...")
+                else:
+                    self._show_message("GSmartControl não encontrado no Windows.\nInstale via: winget install gsmartcontrol")
+            else:
+                # Tenta abrir direto sem pkexec se possível
+                if shutil.which("gsmartcontrol"):
+                    try:
+                        subprocess.Popen(["gsmartcontrol"])
+                    except Exception:
+                        subprocess.Popen(["pkexec", "gsmartcontrol"])
+                    self.set_status("Abrindo GSmartControl...")
+                else:
+                    self._show_message("GSmartControl não encontrado no sistema Linux.\nInstale via seu gerenciador de pacotes (ex: pacman -S gsmartcontrol).")
         except Exception as e:
             self._show_message(f"Não foi possível iniciar o GSmartControl: {e}")
 
     def _export_csv_dialog(self, _btn):
         dlg = Gtk.FileChooserDialog(
-            title="Exportar Planilha de HDs para CSV",
+            title="Exportar Relatório Dinâmico de HDs (CSV)",
             parent=self,
             action=Gtk.FileChooserAction.SAVE,
         )
         dlg.add_buttons(Gtk.STOCK_CANCEL, Gtk.ResponseType.CANCEL, Gtk.STOCK_SAVE, Gtk.ResponseType.OK)
+        dlg.set_do_overwrite_confirmation(True)
         dlg.set_current_name("relatorio_hds_verificados.csv")
         if dlg.run() == Gtk.ResponseType.OK:
             path = dlg.get_filename()
-            self.db.export_to_csv(path)
-            self.set_status(f"Relatório CSV exportado em: {path}")
+            if not path.lower().endswith(".csv"):
+                path += ".csv"
+            
+            filter_status = self.filter_combo.get_active_text() if hasattr(self, "filter_combo") else None
+            search_query = self.search_entry.get_text().strip() if hasattr(self, "search_entry") else None
+            count = self.db.export_to_csv(path, filter_status=filter_status, search_query=search_query)
+            
+            self.set_status(f"Relatório CSV exportado com sucesso ({count} HDs): {path}")
+            self._show_message(
+                f"Exportação concluída com sucesso!\n\n"
+                f"Arquivo: {path}\n"
+                f"Total de HDs contabilizados: {count}\n\n"
+                f"A numeração (#1 até #{count}) é contínua e dinâmica, sem saltos ou inclusão de HDs excluídos."
+            )
         dlg.destroy()
 
     def _set_textview(self, tv: Gtk.TextView, text: str):

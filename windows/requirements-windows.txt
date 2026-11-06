@@ -1,0 +1,2 @@
+# Dependências para Windows do HD Control Studio
+PyGObject>=3.44.0

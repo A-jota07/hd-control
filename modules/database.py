@@ -14,6 +14,7 @@ class DatabaseManager:
         self.db_path = db_path
         self._init_db()
         self._seed_initial_data_if_empty()
+        self.resequence_drives()
 
     def _get_conn(self):
         conn = sqlite3.connect(self.db_path)
@@ -311,13 +312,43 @@ class DatabaseManager:
             conn.commit()
         self.sync_legacy_files()
 
+    def resequence_drives(self):
+        """
+        Reorganiza os IDs da tabela drives para que fiquem estritamente contínuos (1, 2, 3... N).
+        Quando um HD intermediário é excluído, os HDs posteriores recuam imediatamente
+        para ocupar o espaço vago e herdar a nova numeração sequencial sem pular números.
+        """
+        with self._get_conn() as conn:
+            cursor = conn.cursor()
+            cursor.execute("CREATE TEMP TABLE _drives_reseq AS SELECT * FROM drives ORDER BY id ASC;")
+            cursor.execute("DELETE FROM drives;")
+            cursor.execute("""
+                INSERT INTO drives (
+                    id, serial, model, vendor, capacity, drive_type, connection_bus,
+                    device_node, smart_status, bad_sectors, power_on_hours, temperature,
+                    status, assigned_machine, notes, last_tested, created_at
+                )
+                SELECT 
+                    ROW_NUMBER() OVER (ORDER BY id ASC) as id,
+                    serial, model, vendor, capacity, drive_type, connection_bus,
+                    device_node, smart_status, bad_sectors, power_on_hours, temperature,
+                    status, assigned_machine, notes, last_tested, created_at
+                FROM _drives_reseq;
+            """)
+            cursor.execute("DROP TABLE _drives_reseq;")
+            cursor.execute("DELETE FROM sqlite_sequence WHERE name = 'drives';")
+            cursor.execute("INSERT INTO sqlite_sequence (name, seq) SELECT 'drives', COALESCE(MAX(id), 0) FROM drives;")
+            conn.commit()
+
     def delete_drive(self, drive_id: int):
         with self._get_conn() as conn:
             conn.execute("DELETE FROM drives WHERE id = ?", (drive_id,))
             conn.commit()
+        # Resequencia os registros para preencher a vaga do HD excluído imediatamente
+        self.resequence_drives()
         self.sync_legacy_files()
 
-    def get_all_drives(self, filter_status=None, search_query=None):
+    def get_all_drives(self, filter_status=None, search_query=None, order_asc=True):
         with self._get_conn() as conn:
             cursor = conn.cursor()
             query = "SELECT * FROM drives WHERE 1=1"
@@ -329,7 +360,8 @@ class DatabaseManager:
                 q = f"%{search_query}%"
                 query += " AND (serial LIKE ? OR model LIKE ? OR assigned_machine LIKE ? OR notes LIKE ?)"
                 params.extend([q, q, q, q])
-            query += " ORDER BY id DESC"
+            order_clause = "ASC" if order_asc else "DESC"
+            query += f" ORDER BY id {order_clause}"
             cursor.execute(query, params)
             return [dict(row) for row in cursor.fetchall()]
 
@@ -462,11 +494,23 @@ class DatabaseManager:
 
     # --- EXPORT & LEGACY SYNC ---
     def sync_legacy_files(self):
-        """Atualiza /home/junior/workspace/HDs.txt com o resumo atualizado para manter compatibilidade."""
+        """Atualiza HDs.txt com o resumo atualizado para manter compatibilidade cross-platform."""
         try:
             stats = self.get_drive_stats()
-            drives = self.get_all_drives()
-            hds_txt_path = "/home/junior/workspace/HDs.txt"
+            drives = self.get_all_drives(order_asc=True)
+            candidate_paths = [
+                os.path.join(os.path.expanduser("~"), "workspace", "HDs.txt"),
+                os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", "HDs.txt"),
+                os.path.join(os.getcwd(), "HDs.txt"),
+            ]
+            hds_txt_path = None
+            for p in candidate_paths:
+                if os.path.exists(os.path.dirname(p)):
+                    hds_txt_path = p
+                    break
+            if not hds_txt_path:
+                hds_txt_path = os.path.join(DB_DIR, "HDs.txt")
+
             lines = [
                 f"HDs funcionando até o momento = {stats['working']}",
                 f"HDs com defeito = {stats['defective']}",
@@ -475,21 +519,27 @@ class DatabaseManager:
                 "",
                 "=== LISTA DE HDs / SSDs ===",
             ]
-            for d in drives:
+            for idx, d in enumerate(drives, start=1):
                 lines.append(
-                    f"- [{d['status']}] {d['model']} ({d['capacity']}) | S/N: {d['serial']} | SMART: {d['smart_status']} | BadSectors: {d['bad_sectors']} | Destino: {d['assigned_machine'] or 'Estoque'} | Obs: {d['notes']}"
+                    f"#{idx} [{d['status']}] {d['model']} ({d['capacity']}) | S/N: {d['serial']} | SMART: {d['smart_status']} | BadSectors: {d['bad_sectors']} | Destino: {d['assigned_machine'] or 'Estoque'} | Obs: {d['notes']}"
                 )
             with open(hds_txt_path, "w", encoding="utf-8") as f:
                 f.write("\n".join(lines) + "\n")
         except Exception:
             pass
 
-    def export_to_csv(self, filepath: str):
-        drives = self.get_all_drives()
-        with open(filepath, "w", newline="", encoding="utf-8") as f:
-            writer = csv.writer(f)
+    def export_to_csv(self, filepath: str, filter_status=None, search_query=None):
+        """
+        Exporta a lista de HDs para CSV garantindo ordenação sequencial contínua (1, 2, 3... N).
+        Qualquer HD excluído não é contabilizado e o próximo assume dinamicamente o número e o lugar.
+        Usa utf-8-sig para compatibilidade direta com Excel e LibreOffice Calc.
+        """
+        drives = self.get_all_drives(filter_status=filter_status, search_query=search_query, order_asc=True)
+        with open(filepath, "w", newline="", encoding="utf-8-sig") as f:
+            writer = csv.writer(f, delimiter=";")
             writer.writerow(
                 [
+                    "Nº",
                     "ID",
                     "Status",
                     "Modelo",
@@ -505,9 +555,10 @@ class DatabaseManager:
                     "Último Teste",
                 ]
             )
-            for d in drives:
+            for idx, d in enumerate(drives, start=1):
                 writer.writerow(
                     [
+                        idx,
                         d["id"],
                         d["status"],
                         d["model"],
@@ -523,3 +574,4 @@ class DatabaseManager:
                         d["last_tested"],
                     ]
                 )
+        return len(drives)
