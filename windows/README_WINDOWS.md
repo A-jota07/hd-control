@@ -76,4 +76,4 @@ python main.py
 - [x] **Diagnóstico SMART**: Leitura nativa via subsistema de armazenamento do Windows e integração automática com `smartctl.exe`.
 - [x] **Teste de Leitura I/O Direta**: Teste de blocos com streaming sem travamento da interface.
 - [x] **Formatação e Particionamento**: Suporte a GPT/MBR e sistemas de arquivos NTFS, FAT32 e exFAT via `diskpart` com proteção contra formatação do disco de boot (`C:`).
-- [x] **Exportação Dinâmica CSV**: Arquivo com codificação UTF-8-BOM (`utf-8-sig`) e delimitador `;`, abrindo perfeitamente no Excel e LibreOffice sem corromper caracteres acentuados.
+- [x] **Exportação e Arquivos Dinâmicos (CSV / TXT)**: Ao baixar o aplicativo, as tabelas de HDs e Computadores iniciam limpas. Ao cadastrar um HD ou Computador, o app gera um arquivo limpo e pergunta onde você deseja salvá-lo, mantendo a sincronização automática e exportação UTF-8-BOM (`utf-8-sig`) com delimitador `;` para abrir diretamente no Excel e LibreOffice.

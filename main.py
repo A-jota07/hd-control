@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import os
 import sys
+import shutil
 import threading
 import subprocess
 import gi
@@ -165,9 +166,13 @@ class HDControlApp(Gtk.Window):
         btn_gsmart.connect("clicked", self._open_gsmartcontrol)
         sidebar.pack_start(btn_gsmart, False, False, 0)
 
-        btn_export = Gtk.Button(label="⬇  Exportar Relatório CSV")
+        btn_export = Gtk.Button(label="⬇  Exportar HDs (CSV/TXT)")
         btn_export.connect("clicked", self._export_csv_dialog)
         sidebar.pack_start(btn_export, False, False, 0)
+
+        btn_export_pcs = Gtk.Button(label="⬇  Exportar Computadores")
+        btn_export_pcs.connect("clicked", self._export_computers_dialog)
+        sidebar.pack_start(btn_export_pcs, False, False, 0)
 
         body_hbox.pack_start(sidebar_scroll, False, False, 0)
         body_hbox.pack_start(self.stack, True, True, 0)
@@ -183,9 +188,9 @@ class HDControlApp(Gtk.Window):
         status_hbox.pack_start(self.status_spinner, False, False, 0)
         status_hbox.pack_start(self.status_label, True, True, 0)
 
-        lbl_sync = Gtk.Label(label="Sincronizado com SQLite + workspace/HDs.txt")
-        lbl_sync.get_style_context().add_class("mono")
-        status_hbox.pack_end(lbl_sync, False, False, 0)
+        self.lbl_sync = Gtk.Label(label="Modo Dinâmico Ativo (Arquivos sob demanda)")
+        self.lbl_sync.get_style_context().add_class("mono")
+        status_hbox.pack_end(self.lbl_sync, False, False, 0)
 
         root_vbox.pack_start(status_hbox, False, False, 0)
 
@@ -449,6 +454,10 @@ class HDControlApp(Gtk.Window):
         btn_add_manual.get_style_context().add_class("primary-btn")
         btn_add_manual.connect("clicked", self._on_add_manual_drive_dialog)
         filter_bar.pack_end(btn_add_manual, False, False, 0)
+
+        btn_set_hd_file = Gtk.Button(label="📁 Local do Arquivo de HDs")
+        btn_set_hd_file.connect("clicked", lambda _: self._prompt_choose_hds_file(force_dialog=True))
+        filter_bar.pack_end(btn_set_hd_file, False, False, 0)
 
         vbox.pack_start(filter_bar, False, False, 0)
 
@@ -735,8 +744,13 @@ class HDControlApp(Gtk.Window):
         hdr.pack_start(lbl, True, True, 0)
 
         btn_add_pc_group = Gtk.Button(label="+ Adicionar Lote")
+        btn_add_pc_group.get_style_context().add_class("primary-btn")
         btn_add_pc_group.connect("clicked", self._on_add_lab_item_dialog)
         hdr.pack_end(btn_add_pc_group, False, False, 0)
+
+        btn_set_pc_file = Gtk.Button(label="📁 Local do Arquivo de Computadores")
+        btn_set_pc_file.connect("clicked", lambda _: self._prompt_choose_computers_file(force_dialog=True))
+        hdr.pack_end(btn_set_pc_file, False, False, 0)
         vbox.pack_start(hdr, False, False, 0)
 
         # TreeView de lotes de computadores
@@ -817,7 +831,12 @@ class HDControlApp(Gtk.Window):
         btn_save_lab = Gtk.Button(label="Salvar Alterações do Lote")
         btn_save_lab.get_style_context().add_class("primary-btn")
         btn_save_lab.connect("clicked", self._on_save_lab_item)
-        grid.attach(btn_save_lab, 2, 4, 2, 1)
+        grid.attach(btn_save_lab, 2, 4, 1, 1)
+
+        btn_del_lab = Gtk.Button(label="Excluir Lote")
+        btn_del_lab.get_style_context().add_class("danger-btn")
+        btn_del_lab.connect("clicked", self._on_delete_lab_item)
+        grid.attach(btn_del_lab, 3, 4, 1, 1)
 
         grid.attach(Gtk.Label(label="Observações:", xalign=0), 0, 5, 1, 1)
         grid.attach(self.entry_lab_notes, 1, 5, 3, 1)
@@ -886,6 +905,7 @@ class HDControlApp(Gtk.Window):
         self.refresh_drives_table()
         self.refresh_lab_table()
         self.refresh_logs_table()
+        self._update_sync_status_bar()
         if notify:
             self.set_status("Todos os discos e tabelas foram sincronizados.")
 
@@ -1082,6 +1102,7 @@ class HDControlApp(Gtk.Window):
             "SUCCESS",
             f"HD classificado como '{status_val}' (Destino: {drive_data['assigned_machine'] or 'Estoque'})",
         )
+        self._ensure_hds_file_configured()
         self.refresh_all_data()
         self.set_status(f"HD {d['model']} ({serial}) salvo no controle como: {status_val}!")
 
@@ -1248,8 +1269,11 @@ class HDControlApp(Gtk.Window):
                     "notes": e_notes.get_text().strip(),
                 }
             )
+            dialog.destroy()
+            self._ensure_hds_file_configured()
             self.refresh_drives_table()
-        dialog.destroy()
+        else:
+            dialog.destroy()
 
     # =========================================================================
     # EVENTOS DA ABA 3 (FORMATAR, GRAVAR SO E COPIAR ARQUIVOS)
@@ -1322,6 +1346,7 @@ class HDControlApp(Gtk.Window):
                     "notes": f"Formatado em {fs_type.upper()} com sucesso.",
                 }
             )
+            self._ensure_hds_file_configured()
         self.refresh_all_data()
 
     def _on_browse_iso(self, _btn):
@@ -1394,6 +1419,7 @@ class HDControlApp(Gtk.Window):
                     "notes": f"Imagem gravada: {os.path.basename(iso_path)}",
                 }
             )
+            self._ensure_hds_file_configured()
         self.refresh_all_data()
 
     def _on_add_copy_files(self, _btn):
@@ -1514,8 +1540,24 @@ class HDControlApp(Gtk.Window):
             "notes": self.entry_lab_notes.get_text().strip(),
         }
         self.db.update_lab_item(item_id, data)
+        self._ensure_computers_file_configured()
         self.refresh_lab_table()
         self.set_status(f"Inventário '{data['brand_model']}' atualizado!")
+
+    def _on_delete_lab_item(self, _btn):
+        item_id = getattr(self, "_selected_lab_id", None)
+        if not item_id:
+            self._show_message("Selecione um lote na tabela de computadores acima para excluir.")
+            return
+        if self._confirm_dialog(
+            "Excluir Lote de Computadores / Periféricos",
+            f"Deseja remover o lote #{item_id} da tabela?\n\n"
+            f"A numeração dos demais lotes será reorganizada dinamicamente sem pular números.",
+        ):
+            self.db.delete_lab_item(item_id)
+            self._selected_lab_id = None
+            self.refresh_lab_table()
+            self.set_status(f"Lote #{item_id} removido. Numeração atualizada dinamicamente.")
 
     def _on_add_lab_item_dialog(self, _btn):
         dialog = Gtk.Dialog(title="Adicionar Lote de Computadores / Periféricos", transient_for=self, flags=0)
@@ -1530,6 +1572,9 @@ class HDControlApp(Gtk.Window):
         e_cat.set_active(0)
         e_brand = Gtk.Entry(placeholder_text="Ex: Lenovo ThinkCentre / Monitores")
         e_total = Gtk.SpinButton.new_with_range(0, 999, 1)
+        e_working = Gtk.SpinButton.new_with_range(0, 999, 1)
+        e_not_working = Gtk.SpinButton.new_with_range(0, 999, 1)
+        e_no_storage = Gtk.SpinButton.new_with_range(0, 999, 1)
         e_notes = Gtk.Entry(placeholder_text="Observações...")
 
         grid = Gtk.Grid(column_spacing=10, row_spacing=8)
@@ -1539,22 +1584,202 @@ class HDControlApp(Gtk.Window):
         grid.attach(e_brand, 1, 1, 1, 1)
         grid.attach(Gtk.Label(label="Quantidade Total:", xalign=0), 0, 2, 1, 1)
         grid.attach(e_total, 1, 2, 1, 1)
-        grid.attach(Gtk.Label(label="Observações:", xalign=0), 0, 3, 1, 1)
-        grid.attach(e_notes, 1, 3, 1, 1)
+        grid.attach(Gtk.Label(label="Funcionando:", xalign=0), 0, 3, 1, 1)
+        grid.attach(e_working, 1, 3, 1, 1)
+        grid.attach(Gtk.Label(label="Sem Funcionar:", xalign=0), 0, 4, 1, 1)
+        grid.attach(e_not_working, 1, 4, 1, 1)
+        grid.attach(Gtk.Label(label="Sem HD/SSD:", xalign=0), 0, 5, 1, 1)
+        grid.attach(e_no_storage, 1, 5, 1, 1)
+        grid.attach(Gtk.Label(label="Observações:", xalign=0), 0, 6, 1, 1)
+        grid.attach(e_notes, 1, 6, 1, 1)
 
         box.add(grid)
         dialog.show_all()
-        if dialog.run() == Gtk.ResponseType.OK and e_brand.get_text().strip():
+        resp = dialog.run()
+        brand_txt = e_brand.get_text().strip()
+        if resp == Gtk.ResponseType.OK and brand_txt:
             self.db.add_lab_item(
                 {
                     "category": e_cat.get_active_text(),
-                    "brand_model": e_brand.get_text().strip(),
+                    "brand_model": brand_txt,
                     "total": e_total.get_value_as_int(),
+                    "working": e_working.get_value_as_int(),
+                    "not_working": e_not_working.get_value_as_int(),
+                    "without_storage": e_no_storage.get_value_as_int(),
                     "notes": e_notes.get_text().strip(),
                 }
             )
+            dialog.destroy()
+            self._ensure_computers_file_configured()
             self.refresh_lab_table()
-        dialog.destroy()
+        else:
+            dialog.destroy()
+
+    # =========================================================================
+    # ESCOLHA DO LOCAL DE SALVAMENTO E EXPORTAÇÃO DINÂMICA (HDs & COMPUTADORES)
+    # =========================================================================
+    def _update_sync_status_bar(self):
+        if not hasattr(self, "lbl_sync"):
+            return
+        hd_p = self.db.get_hds_file_path()
+        pc_p = self.db.get_computers_file_path()
+        parts = []
+        if hd_p:
+            parts.append(f"HDs: {os.path.basename(hd_p)}")
+        if pc_p:
+            parts.append(f"PCs: {os.path.basename(pc_p)}")
+        if parts:
+            self.lbl_sync.set_text("Sincronizado: " + " | ".join(parts))
+        else:
+            self.lbl_sync.set_text("Modo Dinâmico Ativo (Arquivos sob demanda)")
+
+    def _ensure_hds_file_configured(self):
+        """
+        Quando um HD é adicionado e o arquivo dinâmico de HDs ainda não tem local definido,
+        exibe uma mensagem perguntando onde a pessoa deseja salvá-lo.
+        """
+        if not self.db.get_hds_file_path():
+            self._prompt_choose_hds_file(force_dialog=False)
+        else:
+            self.db.sync_hds_file()
+            self._update_sync_status_bar()
+
+    def _ensure_computers_file_configured(self):
+        """
+        Quando um computador/lote é adicionado e o arquivo dinâmico de computadores ainda não tem local definido,
+        exibe uma mensagem perguntando onde a pessoa deseja salvá-lo.
+        """
+        if not self.db.get_computers_file_path():
+            self._prompt_choose_computers_file(force_dialog=False)
+        else:
+            self.db.sync_computers_file()
+            self._update_sync_status_bar()
+
+    def _prompt_choose_hds_file(self, force_dialog: bool = False):
+        if not force_dialog:
+            ask = self._confirm_dialog(
+                "Salvar Arquivo Dinâmico de HDs",
+                "Um novo arquivo limpo de controle de HDs foi gerado com os dados cadastrados neste computador.\n\n"
+                "Deseja escolher agora a pasta e o nome onde salvar o arquivo de HDs (.csv ou .txt)?",
+            )
+            if not ask:
+                return
+
+        dlg = Gtk.FileChooserDialog(
+            title="Onde deseja salvar o arquivo dinâmico de HDs?",
+            parent=self,
+            action=Gtk.FileChooserAction.SAVE,
+        )
+        dlg.add_buttons(Gtk.STOCK_CANCEL, Gtk.ResponseType.CANCEL, Gtk.STOCK_SAVE, Gtk.ResponseType.OK)
+        dlg.set_do_overwrite_confirmation(True)
+
+        current = self.db.get_hds_file_path()
+        if current:
+            dlg.set_filename(current)
+        else:
+            dlg.set_current_folder(os.path.expanduser("~"))
+            dlg.set_current_name("HDs_controle.csv")
+
+        flt_csv = Gtk.FileFilter()
+        flt_csv.set_name("Planilha CSV (*.csv) - Excel / Calc")
+        flt_csv.add_pattern("*.csv")
+        dlg.add_filter(flt_csv)
+
+        flt_txt = Gtk.FileFilter()
+        flt_txt.set_name("Arquivo de Texto (*.txt)")
+        flt_txt.add_pattern("*.txt")
+        dlg.add_filter(flt_txt)
+
+        if dlg.run() == Gtk.ResponseType.OK:
+            path = dlg.get_filename()
+            if not path.lower().endswith((".csv", ".txt")):
+                path += ".csv"
+            self.db.set_hds_file_path(path)
+            self._update_sync_status_bar()
+            self.set_status(f"Arquivo de HDs salvo e vinculado em: {path}")
+            self._show_message(
+                f"Arquivo dinâmico de HDs gerado com sucesso!\n\n"
+                f"Local salvo: {path}\n\n"
+                f"Sempre que você adicionar, editar ou excluir um HD neste PC, este arquivo será atualizado automaticamente."
+            )
+        dlg.destroy()
+
+    def _prompt_choose_computers_file(self, force_dialog: bool = False):
+        if not force_dialog:
+            ask = self._confirm_dialog(
+                "Salvar Arquivo Dinâmico de Computadores",
+                "Um novo arquivo limpo de controle de Computadores foi gerado com os dados cadastrados neste PC.\n\n"
+                "Deseja escolher agora a pasta e o nome onde salvar o arquivo de Computadores (.csv ou .txt)?",
+            )
+            if not ask:
+                return
+
+        dlg = Gtk.FileChooserDialog(
+            title="Onde deseja salvar o arquivo dinâmico de Computadores?",
+            parent=self,
+            action=Gtk.FileChooserAction.SAVE,
+        )
+        dlg.add_buttons(Gtk.STOCK_CANCEL, Gtk.ResponseType.CANCEL, Gtk.STOCK_SAVE, Gtk.ResponseType.OK)
+        dlg.set_do_overwrite_confirmation(True)
+
+        current = self.db.get_computers_file_path()
+        if current:
+            dlg.set_filename(current)
+        else:
+            dlg.set_current_folder(os.path.expanduser("~"))
+            dlg.set_current_name("computadores_controle.csv")
+
+        flt_csv = Gtk.FileFilter()
+        flt_csv.set_name("Planilha CSV (*.csv) - Excel / Calc")
+        flt_csv.add_pattern("*.csv")
+        dlg.add_filter(flt_csv)
+
+        flt_txt = Gtk.FileFilter()
+        flt_txt.set_name("Arquivo de Texto (*.txt)")
+        flt_txt.add_pattern("*.txt")
+        dlg.add_filter(flt_txt)
+
+        if dlg.run() == Gtk.ResponseType.OK:
+            path = dlg.get_filename()
+            if not path.lower().endswith((".csv", ".txt")):
+                path += ".csv"
+            self.db.set_computers_file_path(path)
+            self._update_sync_status_bar()
+            self.set_status(f"Arquivo de Computadores salvo e vinculado em: {path}")
+            self._show_message(
+                f"Arquivo dinâmico de Computadores gerado com sucesso!\n\n"
+                f"Local salvo: {path}\n\n"
+                f"Sempre que você adicionar ou atualizar lotes de computadores neste PC, este arquivo será atualizado automaticamente."
+            )
+        dlg.destroy()
+
+    def _export_computers_dialog(self, _btn):
+        dlg = Gtk.FileChooserDialog(
+            title="Exportar Relatório Dinâmico de Computadores (CSV / TXT)",
+            parent=self,
+            action=Gtk.FileChooserAction.SAVE,
+        )
+        dlg.add_buttons(Gtk.STOCK_CANCEL, Gtk.ResponseType.CANCEL, Gtk.STOCK_SAVE, Gtk.ResponseType.OK)
+        dlg.set_do_overwrite_confirmation(True)
+        dlg.set_current_name("relatorio_computadores.csv")
+        if dlg.run() == Gtk.ResponseType.OK:
+            path = dlg.get_filename()
+            if not path.lower().endswith((".csv", ".txt")):
+                path += ".csv"
+            if path.lower().endswith(".txt"):
+                self.db.sync_computers_file(custom_path=path)
+                count = len(self.db.get_lab_inventory())
+            else:
+                count = self.db.export_computers_to_csv(path)
+            self.db.set_computers_file_path(path)
+            self._update_sync_status_bar()
+            self.set_status(f"Relatório de Computadores exportado ({count} lotes): {path}")
+            self._show_message(
+                f"Exportação de Computadores concluída com sucesso!\n\n"
+                f"Arquivo: {path}\n"
+                f"Total de lotes registrados: {count}"
+            )
+        dlg.destroy()
 
     # =========================================================================
     # UTILITÁRIOS DE UI E ATALHOS EXTERNOS
@@ -1583,23 +1808,40 @@ class HDControlApp(Gtk.Window):
 
     def _export_csv_dialog(self, _btn):
         dlg = Gtk.FileChooserDialog(
-            title="Exportar Relatório Dinâmico de HDs (CSV)",
+            title="Exportar Relatório Dinâmico de HDs (CSV / TXT)",
             parent=self,
             action=Gtk.FileChooserAction.SAVE,
         )
         dlg.add_buttons(Gtk.STOCK_CANCEL, Gtk.ResponseType.CANCEL, Gtk.STOCK_SAVE, Gtk.ResponseType.OK)
         dlg.set_do_overwrite_confirmation(True)
         dlg.set_current_name("relatorio_hds_verificados.csv")
+
+        flt_csv = Gtk.FileFilter()
+        flt_csv.set_name("Planilha CSV (*.csv) - Excel / Calc")
+        flt_csv.add_pattern("*.csv")
+        dlg.add_filter(flt_csv)
+
+        flt_txt = Gtk.FileFilter()
+        flt_txt.set_name("Arquivo de Texto (*.txt)")
+        flt_txt.add_pattern("*.txt")
+        dlg.add_filter(flt_txt)
+
         if dlg.run() == Gtk.ResponseType.OK:
             path = dlg.get_filename()
-            if not path.lower().endswith(".csv"):
+            if not path.lower().endswith((".csv", ".txt")):
                 path += ".csv"
             
             filter_status = self.filter_combo.get_active_text() if hasattr(self, "filter_combo") else None
             search_query = self.search_entry.get_text().strip() if hasattr(self, "search_entry") else None
-            count = self.db.export_to_csv(path, filter_status=filter_status, search_query=search_query)
+            if path.lower().endswith(".txt"):
+                self.db.sync_hds_file(custom_path=path)
+                count = len(self.db.get_all_drives(filter_status=filter_status, search_query=search_query))
+            else:
+                count = self.db.export_to_csv(path, filter_status=filter_status, search_query=search_query)
+            self.db.set_hds_file_path(path)
+            self._update_sync_status_bar()
             
-            self.set_status(f"Relatório CSV exportado com sucesso ({count} HDs): {path}")
+            self.set_status(f"Relatório de HDs exportado com sucesso ({count} HDs): {path}")
             self._show_message(
                 f"Exportação concluída com sucesso!\n\n"
                 f"Arquivo: {path}\n"

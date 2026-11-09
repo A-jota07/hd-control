@@ -6,15 +6,54 @@ from datetime import datetime
 
 DB_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data")
 DB_PATH = os.path.join(DB_DIR, "hd_control.db")
+CONFIG_PATH = os.path.join(DB_DIR, "storage_config.json")
 
 
 class DatabaseManager:
     def __init__(self, db_path=DB_PATH):
         os.makedirs(os.path.dirname(db_path), exist_ok=True)
         self.db_path = db_path
+        self.config = self._load_config()
         self._init_db()
-        self._seed_initial_data_if_empty()
+        self._cleanup_legacy_seed_data()
         self.resequence_drives()
+        self.resequence_lab_inventory()
+
+    def _load_config(self) -> dict:
+        if os.path.exists(CONFIG_PATH):
+            try:
+                with open(CONFIG_PATH, "r", encoding="utf-8") as f:
+                    return json.load(f)
+            except Exception:
+                pass
+        return {
+            "hds_file_path": None,
+            "computers_file_path": None,
+        }
+
+    def save_config(self):
+        os.makedirs(os.path.dirname(CONFIG_PATH), exist_ok=True)
+        try:
+            with open(CONFIG_PATH, "w", encoding="utf-8") as f:
+                json.dump(self.config, f, indent=2, ensure_ascii=False)
+        except Exception:
+            pass
+
+    def get_hds_file_path(self) -> str:
+        return self.config.get("hds_file_path")
+
+    def set_hds_file_path(self, path: str):
+        self.config["hds_file_path"] = path
+        self.save_config()
+        self.sync_hds_file()
+
+    def get_computers_file_path(self) -> str:
+        return self.config.get("computers_file_path")
+
+    def set_computers_file_path(self, path: str):
+        self.config["computers_file_path"] = path
+        self.save_config()
+        self.sync_computers_file()
 
     def _get_conn(self):
         conn = sqlite3.connect(self.db_path)
@@ -24,7 +63,7 @@ class DatabaseManager:
     def _init_db(self):
         with self._get_conn() as conn:
             cursor = conn.cursor()
-            # Tabela de HDs / SSDs verificados
+            # Tabela de HDs / SSDs verificados (inicia sempre limpa em cada PC)
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS drives (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -47,7 +86,7 @@ class DatabaseManager:
                 )
             """)
 
-            # Tabela de Levantamento de Computadores / Periféricos (importado de 'computadores' e 'HDs.txt')
+            # Tabela de Levantamento de Computadores / Periféricos (inicia sempre limpa em cada PC)
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS lab_inventory (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -80,132 +119,24 @@ class DatabaseManager:
             """)
             conn.commit()
 
-    def _seed_initial_data_if_empty(self):
+    def _cleanup_legacy_seed_data(self):
+        """
+        Remove registros estáticos antigos de exemplo caso estivessem presentes no banco local,
+        garantindo que cada computador tenha apenas os dados que realmente cadastrar.
+        """
         with self._get_conn() as conn:
             cursor = conn.cursor()
-            cursor.execute("SELECT COUNT(*) as cnt FROM lab_inventory")
-            if cursor.fetchone()["cnt"] == 0:
-                now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                initial_lab = [
-                    (
-                        "Computador",
-                        "Dell (Bancada LEIA)",
-                        35,
-                        10,
-                        25,
-                        10,
-                        24,
-                        8,
-                        12,
-                        15,
-                        "Levantamento inicial importado do arquivo 'computadores'",
-                        now,
-                    ),
-                    (
-                        "Computador",
-                        "Bematech (Mini PC)",
-                        6,
-                        0,
-                        6,
-                        4,
-                        2,
-                        2,
-                        1,
-                        3,
-                        "Nenhum funcionando inicialmente. Importado de 'computadores'",
-                        now,
-                    ),
-                    (
-                        "Computador",
-                        "HP (Bancada)",
-                        1,
-                        0,
-                        1,
-                        0,
-                        1,
-                        0,
-                        0,
-                        1,
-                        "Precisa: AMD Ryzen 7 2700 ou Ryzen 5 2400G | RAM DDR4 8GB 2400 | GPU RX 6400",
-                        now,
-                    ),
-                    (
-                        "Periférico",
-                        "Teclados",
-                        13,
-                        10,
-                        3,
-                        0,
-                        0,
-                        0,
-                        0,
-                        0,
-                        "1 funcionando c/ problema (Tecla F9 travada). 3 sem funcionar (Sem pilha AAA+ e dongle).",
-                        now,
-                    ),
-                ]
-                cursor.executemany(
-                    """
-                    INSERT INTO lab_inventory (
-                        category, brand_model, total, working, not_working,
-                        with_ram, without_ram, with_hdd, with_ssd, without_storage, notes, updated_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                    initial_lab,
-                )
-
-            # Verificar também se há HDs registrados. No arquivo HDs.txt constava "HDs funcionando até o momento = 2"
-            cursor.execute("SELECT COUNT(*) as cnt FROM drives")
-            if cursor.fetchone()["cnt"] == 0:
-                now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                initial_drives = [
-                    (
-                        "HD-HIST-001",
-                        "HD Verificado #1 (Histórico HDs.txt)",
-                        "Genérico",
-                        "—",
-                        "HDD",
-                        "usb",
-                        "",
-                        "PASSED",
-                        0,
-                        0,
-                        0.0,
-                        "Funcionando",
-                        "Estoque LEIA",
-                        "Importado automaticamente de HDs.txt (HDs funcionando = 2)",
-                        now,
-                        now,
-                    ),
-                    (
-                        "HD-HIST-002",
-                        "HD Verificado #2 (Histórico HDs.txt)",
-                        "Genérico",
-                        "—",
-                        "HDD",
-                        "usb",
-                        "",
-                        "PASSED",
-                        0,
-                        0,
-                        0.0,
-                        "Funcionando",
-                        "Estoque LEIA",
-                        "Importado automaticamente de HDs.txt (HDs funcionando = 2)",
-                        now,
-                        now,
-                    ),
-                ]
-                cursor.executemany(
-                    """
-                    INSERT INTO drives (
-                        serial, model, vendor, capacity, drive_type, connection_bus,
-                        device_node, smart_status, bad_sectors, power_on_hours, temperature,
-                        status, assigned_machine, notes, last_tested, created_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                    initial_drives,
-                )
+            cursor.execute(
+                "DELETE FROM drives WHERE serial IN ('HD-HIST-001', 'HD-HIST-002') AND notes LIKE '%Importado automaticamente de HDs.txt%'"
+            )
+            cursor.execute(
+                "DELETE FROM lab_inventory WHERE notes IN ("
+                "'Levantamento inicial importado do arquivo ''computadores''', "
+                "'Nenhum funcionando inicialmente. Importado de ''computadores''', "
+                "'Precisa: AMD Ryzen 7 2700 ou Ryzen 5 2400G | RAM DDR4 8GB 2400 | GPU RX 6400', "
+                "'1 funcionando c/ problema (Tecla F9 travada). 3 sem funcionar (Sem pilha AAA+ e dongle).'"
+                ")"
+            )
             conn.commit()
 
     # --- DRIVES CRUD ---
@@ -408,6 +339,30 @@ class DatabaseManager:
             cursor.execute("SELECT * FROM lab_inventory ORDER BY id ASC")
             return [dict(row) for row in cursor.fetchall()]
 
+    def resequence_lab_inventory(self):
+        """
+        Reorganiza os IDs da tabela lab_inventory para que fiquem estritamente contínuos (1, 2, 3... N).
+        """
+        with self._get_conn() as conn:
+            cursor = conn.cursor()
+            cursor.execute("CREATE TEMP TABLE _lab_reseq AS SELECT * FROM lab_inventory ORDER BY id ASC;")
+            cursor.execute("DELETE FROM lab_inventory;")
+            cursor.execute("""
+                INSERT INTO lab_inventory (
+                    id, category, brand_model, total, working, not_working,
+                    with_ram, without_ram, with_hdd, with_ssd, without_storage, notes, updated_at
+                )
+                SELECT
+                    ROW_NUMBER() OVER (ORDER BY id ASC) as id,
+                    category, brand_model, total, working, not_working,
+                    with_ram, without_ram, with_hdd, with_ssd, without_storage, notes, updated_at
+                FROM _lab_reseq;
+            """)
+            cursor.execute("DROP TABLE _lab_reseq;")
+            cursor.execute("DELETE FROM sqlite_sequence WHERE name = 'lab_inventory';")
+            cursor.execute("INSERT INTO sqlite_sequence (name, seq) SELECT 'lab_inventory', COALESCE(MAX(id), 0) FROM lab_inventory;")
+            conn.commit()
+
     def update_lab_item(self, item_id: int, data: dict):
         now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         with self._get_conn() as conn:
@@ -471,6 +426,14 @@ class DatabaseManager:
                 ),
             )
             conn.commit()
+        self.resequence_lab_inventory()
+        self.sync_legacy_files()
+
+    def delete_lab_item(self, item_id: int):
+        with self._get_conn() as conn:
+            conn.execute("DELETE FROM lab_inventory WHERE id = ?", (item_id,))
+            conn.commit()
+        self.resequence_lab_inventory()
         self.sync_legacy_files()
 
     # --- LOGS ---
@@ -492,41 +455,87 @@ class DatabaseManager:
             cursor.execute("SELECT * FROM operation_logs ORDER BY id DESC LIMIT ?", (limit,))
             return [dict(row) for row in cursor.fetchall()]
 
-    # --- EXPORT & LEGACY SYNC ---
+    # --- EXPORT & DYNAMIC FILE SYNC ---
     def sync_legacy_files(self):
-        """Atualiza HDs.txt com o resumo atualizado para manter compatibilidade cross-platform."""
-        try:
-            stats = self.get_drive_stats()
-            drives = self.get_all_drives(order_asc=True)
-            candidate_paths = [
-                os.path.join(os.path.expanduser("~"), "workspace", "HDs.txt"),
-                os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", "HDs.txt"),
-                os.path.join(os.getcwd(), "HDs.txt"),
-            ]
-            hds_txt_path = None
-            for p in candidate_paths:
-                if os.path.exists(os.path.dirname(p)):
-                    hds_txt_path = p
-                    break
-            if not hds_txt_path:
-                hds_txt_path = os.path.join(DB_DIR, "HDs.txt")
+        """Sincroniza os arquivos dinâmicos de HDs e Computadores nos caminhos escolhidos pelo usuário."""
+        self.sync_hds_file()
+        self.sync_computers_file()
 
-            lines = [
-                f"HDs funcionando até o momento = {stats['working']}",
-                f"HDs com defeito = {stats['defective']}",
-                f"HDs em teste = {stats['testing']}",
-                f"Total de HDs registrados = {stats['total']}",
-                "",
-                "=== LISTA DE HDs / SSDs ===",
-            ]
-            for idx, d in enumerate(drives, start=1):
-                lines.append(
-                    f"#{idx} [{d['status']}] {d['model']} ({d['capacity']}) | S/N: {d['serial']} | SMART: {d['smart_status']} | BadSectors: {d['bad_sectors']} | Destino: {d['assigned_machine'] or 'Estoque'} | Obs: {d['notes']}"
-                )
-            with open(hds_txt_path, "w", encoding="utf-8") as f:
-                f.write("\n".join(lines) + "\n")
+    def sync_hds_file(self, custom_path: str = None):
+        """
+        Gera/atualiza o arquivo de HDs limpo e dinâmico com base apenas nos HDs cadastrados neste PC.
+        Suporta formato .csv ou .txt conforme o caminho escolhido pelo usuário.
+        """
+        target_path = custom_path or self.get_hds_file_path()
+        if not target_path:
+            return False
+        try:
+            os.makedirs(os.path.dirname(os.path.abspath(target_path)), exist_ok=True)
+            if target_path.lower().endswith(".csv"):
+                self.export_to_csv(target_path)
+            else:
+                stats = self.get_drive_stats()
+                drives = self.get_all_drives(order_asc=True)
+                lines = [
+                    "=== CONTROLE DINÂMICO DE HDs / SSDs ===",
+                    f"Atualizado em: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
+                    f"HDs funcionando até o momento = {stats['working']}",
+                    f"HDs com defeito = {stats['defective']}",
+                    f"HDs em teste = {stats['testing']}",
+                    f"Total de HDs registrados = {stats['total']}",
+                    "",
+                    "=== LISTA DE HDs / SSDs ===",
+                ]
+                if not drives:
+                    lines.append("(Arquivo limpo — nenhum HD registrado até o momento)")
+                else:
+                    for idx, d in enumerate(drives, start=1):
+                        lines.append(
+                            f"#{idx} [{d['status']}] {d['model']} ({d['capacity']}) | S/N: {d['serial']} | SMART: {d['smart_status']} | BadSectors: {d['bad_sectors']} | Destino: {d['assigned_machine'] or 'Estoque'} | Obs: {d['notes']}"
+                        )
+                with open(target_path, "w", encoding="utf-8") as f:
+                    f.write("\n".join(lines) + "\n")
+            return True
         except Exception:
-            pass
+            return False
+
+    def sync_computers_file(self, custom_path: str = None):
+        """
+        Gera/atualiza o arquivo de Computadores limpo e dinâmico com base apenas nos lotes cadastrados neste PC.
+        Suporta formato .csv ou .txt conforme o caminho escolhido pelo usuário.
+        """
+        target_path = custom_path or self.get_computers_file_path()
+        if not target_path:
+            return False
+        try:
+            os.makedirs(os.path.dirname(os.path.abspath(target_path)), exist_ok=True)
+            if target_path.lower().endswith(".csv"):
+                self.export_computers_to_csv(target_path)
+            else:
+                items = self.get_lab_inventory()
+                total_pcs = sum(i["total"] for i in items if i["category"] == "Computador")
+                working_pcs = sum(i["working"] for i in items if i["category"] == "Computador")
+                no_storage_pcs = sum(i["without_storage"] for i in items if i["category"] == "Computador")
+                lines = [
+                    "=== LEVANTAMENTO DINÂMICO DE COMPUTADORES E PERIFÉRICOS ===",
+                    f"Atualizado em: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
+                    f"Total de Computadores = {total_pcs} | Funcionando = {working_pcs} | Sem HD/SSD = {no_storage_pcs}",
+                    "",
+                    "=== LOTES / BANCADA ===",
+                ]
+                if not items:
+                    lines.append("(Arquivo limpo — nenhum computador ou periférico registrado até o momento)")
+                else:
+                    for idx, it in enumerate(items, start=1):
+                        lines.append(
+                            f"#{idx} [{it['category']}] {it['brand_model']} | Total: {it['total']} | Func: {it['working']} | Sem Func: {it['not_working']} | "
+                            f"Com RAM: {it['with_ram']} | Sem RAM: {it['without_ram']} | Com HDD: {it['with_hdd']} | Com SSD: {it['with_ssd']} | Sem HD/SSD: {it['without_storage']} | Obs: {it['notes']}"
+                        )
+                with open(target_path, "w", encoding="utf-8") as f:
+                    f.write("\n".join(lines) + "\n")
+            return True
+        except Exception:
+            return False
 
     def export_to_csv(self, filepath: str, filter_status=None, search_query=None):
         """
@@ -575,3 +584,50 @@ class DatabaseManager:
                     ]
                 )
         return len(drives)
+
+    def export_computers_to_csv(self, filepath: str):
+        """
+        Exporta a lista de Computadores e Periféricos para CSV garantindo numeração sequencial (1..N)
+        e codificação UTF-8-BOM (utf-8-sig) compatível com Excel e LibreOffice Calc no Windows e Linux.
+        """
+        items = self.get_lab_inventory()
+        with open(filepath, "w", newline="", encoding="utf-8-sig") as f:
+            writer = csv.writer(f, delimiter=";")
+            writer.writerow(
+                [
+                    "Nº",
+                    "ID",
+                    "Categoria",
+                    "Marca / Modelo",
+                    "Total",
+                    "Funcionando",
+                    "Sem Funcionar",
+                    "Com RAM",
+                    "Sem RAM",
+                    "Com HDD",
+                    "Com SSD",
+                    "Sem HD/SSD",
+                    "Observações",
+                    "Última Atualização",
+                ]
+            )
+            for idx, it in enumerate(items, start=1):
+                writer.writerow(
+                    [
+                        idx,
+                        it["id"],
+                        it["category"],
+                        it["brand_model"],
+                        it["total"],
+                        it["working"],
+                        it["not_working"],
+                        it["with_ram"],
+                        it["without_ram"],
+                        it["with_hdd"],
+                        it["with_ssd"],
+                        it["without_storage"],
+                        it["notes"],
+                        it["updated_at"],
+                    ]
+                )
+        return len(items)
