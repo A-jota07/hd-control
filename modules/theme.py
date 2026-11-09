@@ -213,32 +213,32 @@ treeview.view header button {
 
 LIGHT_CSS = """
 window, dialog, .main-window {
-    background-color: #fafafa;
-    color: #09090b;
+    background-color: #dde3ea;
+    color: #1e293b;
     font-family: "Inter", "Cantarell", "Noto Sans", sans-serif;
 }
 
 .sidebar {
-    background-color: #f4f4f5;
-    border-right: 1px solid #d4d4d8;
+    background-color: #d4dce6;
+    border-right: 1px solid #bdc7d4;
 }
 
 .topbar {
-    background-color: #ffffff;
-    border-bottom: 1px solid #d4d4d8;
+    background-color: #e4eaf1;
+    border-bottom: 1px solid #bdc7d4;
     padding: 12px 20px;
 }
 
 .card {
-    background-color: #ffffff;
-    border: 1px solid #d4d4d8;
+    background-color: #e7edf3;
+    border: 1px solid #c2ccd8;
     border-radius: 8px;
     padding: 10px 14px;
 }
 
 .card-highlight {
-    background-color: #ffffff;
-    border: 2px solid #09090b;
+    background-color: #ecf1f6;
+    border: 2px solid #334155;
     border-radius: 8px;
     padding: 10px 14px;
 }
@@ -246,13 +246,13 @@ window, dialog, .main-window {
 .stat-value {
     font-size: 20px;
     font-weight: 800;
-    color: #09090b;
+    color: #1e293b;
 }
 
 .stat-label {
     font-size: 10px;
     font-weight: 600;
-    color: #52525b;
+    color: #475569;
     letter-spacing: 0.5px;
 }
 
@@ -263,31 +263,31 @@ notebook {
 
 notebook tab {
     padding: 6px 14px;
-    background-color: #e4e4e7;
-    color: #52525b;
+    background-color: #d4dce6;
+    color: #475569;
     font-weight: 600;
-    border: 1px solid #d4d4d8;
+    border: 1px solid #bdc7d4;
     border-bottom: none;
     border-top-left-radius: 6px;
     border-top-right-radius: 6px;
 }
 
 notebook tab:checked {
-    background-color: #09090b;
-    color: #ffffff;
+    background-color: #273449;
+    color: #eef3f8;
     font-weight: 700;
-    border-color: #09090b;
+    border-color: #273449;
 }
 
 .section-title {
     font-size: 16px;
     font-weight: 700;
-    color: #09090b;
+    color: #1e293b;
 }
 
 .subtitle {
     font-size: 12px;
-    color: #52525b;
+    color: #475569;
 }
 
 .mono {
@@ -297,9 +297,9 @@ notebook tab:checked {
 
 button {
     background-image: none;
-    background-color: #ffffff;
-    color: #09090b;
-    border: 1px solid #a1a1aa;
+    background-color: #e2e8f0;
+    color: #1e293b;
+    border: 1px solid #94a3b8;
     border-radius: 6px;
     padding: 7px 14px;
     font-weight: 600;
@@ -308,41 +308,41 @@ button {
 }
 
 button:hover {
-    background-color: #f4f4f5;
-    border-color: #09090b;
+    background-color: #d5dee9;
+    border-color: #475569;
 }
 
 button:active {
-    background-color: #e4e4e7;
+    background-color: #c8d3e0;
 }
 
 button.primary-btn {
-    background-color: #09090b;
-    color: #ffffff;
-    border: 1px solid #09090b;
+    background-color: #273449;
+    color: #eef3f8;
+    border: 1px solid #273449;
     font-weight: 700;
 }
 
 button.primary-btn:hover {
-    background-color: #27272a;
-    border-color: #27272a;
+    background-color: #334155;
+    border-color: #334155;
 }
 
 button.danger-btn {
-    background-color: #ffffff;
-    color: #09090b;
-    border: 1px dashed #52525b;
+    background-color: #e2e8f0;
+    color: #1e293b;
+    border: 1px dashed #64748b;
 }
 
 button.danger-btn:hover {
-    background-color: #09090b;
-    color: #ffffff;
-    border: 1px solid #09090b;
+    background-color: #273449;
+    color: #eef3f8;
+    border: 1px solid #273449;
 }
 
 button.nav-btn {
     background-color: transparent;
-    color: #52525b;
+    color: #334155;
     border: 1px solid transparent;
     border-radius: 6px;
     padding: 10px 14px;
@@ -350,14 +350,14 @@ button.nav-btn {
 }
 
 button.nav-btn:hover {
-    background-color: #e4e4e7;
-    color: #09090b;
+    background-color: #cad4e0;
+    color: #0f172a;
 }
 
 button.nav-btn-active {
-    background-color: #09090b;
-    color: #ffffff;
-    border: 1px solid #09090b;
+    background-color: #273449;
+    color: #eef3f8;
+    border: 1px solid #273449;
     border-radius: 6px;
     padding: 10px 14px;
     font-weight: 700;
@@ -365,40 +365,41 @@ button.nav-btn-active {
 
 entry, combobox button, spinbutton, textview, textview text {
     background-image: none;
-    background-color: #ffffff;
-    color: #09090b;
-    border: 1px solid #a1a1aa;
+    background-color: #eef2f6;
+    color: #1e293b;
+    border: 1px solid #94a3b8;
     border-radius: 6px;
     padding: 6px 10px;
 }
 
 entry:focus, textview:focus {
-    border-color: #09090b;
+    border-color: #334155;
+    background-color: #f3f6f9;
 }
 
 treeview.view {
-    background-color: #ffffff;
-    color: #09090b;
+    background-color: #eaeff5;
+    color: #1e293b;
 }
 
 treeview.view:selected {
-    background-color: #09090b;
-    color: #ffffff;
+    background-color: #273449;
+    color: #eef3f8;
 }
 
 treeview.view header button {
-    background-color: #f4f4f5;
-    color: #27272a;
+    background-color: #d8e0ea;
+    color: #334155;
     font-weight: 700;
     border: none;
-    border-bottom: 1px solid #d4d4d8;
-    border-right: 1px solid #d4d4d8;
+    border-bottom: 1px solid #bdc7d4;
+    border-right: 1px solid #bdc7d4;
     padding: 8px 10px;
 }
 
 .badge-dark {
-    background-color: #09090b;
-    color: #ffffff;
+    background-color: #273449;
+    color: #eef3f8;
     border-radius: 4px;
     padding: 2px 8px;
     font-size: 11px;
@@ -406,9 +407,9 @@ treeview.view header button {
 }
 
 .badge-outline {
-    background-color: #f4f4f5;
-    color: #09090b;
-    border: 1px solid #71717a;
+    background-color: #dde3ea;
+    color: #1e293b;
+    border: 1px solid #64748b;
     border-radius: 4px;
     padding: 2px 8px;
     font-size: 11px;
@@ -416,10 +417,10 @@ treeview.view header button {
 }
 
 .status-bar {
-    background-color: #f4f4f5;
-    border-top: 1px solid #d4d4d8;
+    background-color: #d4dce6;
+    border-top: 1px solid #bdc7d4;
     padding: 8px 18px;
     font-size: 12px;
-    color: #52525b;
+    color: #334155;
 }
 """

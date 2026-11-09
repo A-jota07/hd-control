@@ -47,7 +47,7 @@ class HDControlApp(Gtk.Window):
         css = DARK_CSS if self.is_dark_theme else LIGHT_CSS
         self.css_provider.load_from_data(css.encode("utf-8"))
         if hasattr(self, "theme_btn"):
-            self.theme_btn.set_label("☀  Tema Claro (P&B)" if self.is_dark_theme else "☾  Tema Escuro (P&B)")
+            self.theme_btn.set_label("❄  Tema Gelo (Suave)" if self.is_dark_theme else "☾  Tema Escuro")
 
     def _toggle_theme(self, _btn):
         self.is_dark_theme = not self.is_dark_theme
@@ -82,7 +82,7 @@ class HDControlApp(Gtk.Window):
         btn_refresh.connect("clicked", lambda _: self.refresh_all_data(notify=True))
         topbar.pack_end(btn_refresh, False, False, 0)
 
-        self.theme_btn = Gtk.Button(label="☀  Tema Claro (P&B)")
+        self.theme_btn = Gtk.Button(label="❄  Tema Gelo (Suave)")
         self.theme_btn.connect("clicked", self._toggle_theme)
         topbar.pack_end(self.theme_btn, False, False, 0)
 
